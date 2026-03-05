@@ -63,17 +63,25 @@ assert_json_field() {
 
 run_claude() {
     local prompt="$1"
-    local timeout="${2:-120}"
+    local max_time="${2:-120}"
     local plugin_dir="${3:-$PLUGIN_ROOT}"
     local work_dir="${4:-$PLUGIN_ROOT}"
     local output_file
     output_file=$(mktemp)
+    local timeout_cmd=""
+    if command -v gtimeout &>/dev/null; then
+        timeout_cmd="gtimeout $max_time"
+    elif command -v timeout &>/dev/null; then
+        timeout_cmd="timeout $max_time"
+    fi
     (
         cd "$work_dir"
-        timeout "$timeout" claude -p "$prompt" \
+        unset CLAUDECODE
+        $timeout_cmd claude -p "$prompt" \
             --plugin-dir "$plugin_dir" \
             --dangerously-skip-permissions \
             --max-turns 3 \
+            --verbose \
             --output-format stream-json 2>&1
     ) > "$output_file" || true
     cat "$output_file"
