@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# SessionStart hook: detect Serena project + inject orca-setup skill
+# Pattern: identical to superpowers/hooks/session-start
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Detect Serena project from $PWD
+# Order matters: check more-specific paths before less-specific
+detect_project() {
+    local cwd="$PWD"
+    case "$cwd" in
+        */orca-runtime-sensor*) echo "orca-runtime-sensor" ;;
+        */orca-sensor*)         echo "orca-sensor" ;;
+        */helm-charts*)         echo "helm-charts" ;;
+        */src/orca*)            echo "orca" ;;
+        */src)                  echo "orca-unified" ;;
+        *)                      echo "" ;;
+    esac
+}
+
+# Read master skill content
+skill_content=$(cat "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md" 2>/dev/null || echo "")
+
+# Detect project
+project=$(detect_project)
+
+# Build project activation block
+project_ctx=""
+if [ -n "$project" ]; then
+    project_ctx="SERENA WORKSPACE DETECTED: project='${project}' at ${PWD}\\n\\nIMMEDIATELY call: mcp__serena__activate_project(project=${project})\\nThen: mcp__serena__list_memories() and read relevant memories."
+fi
+
+# JSON escape (identical to superpowers implementation)
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# If no project detected, output minimal JSON and exit
+if [ -z "$project" ]; then
+    cat <<EOF
+{
+  "additional_context": "",
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": ""
+  }
+}
+EOF
+    exit 0
+fi
+
+skill_escaped=$(escape_for_json "$skill_content")
+project_escaped=$(escape_for_json "$project_ctx")
+
+session_ctx="<EXTREMELY_IMPORTANT>\\nYou have orca workspace superpowers.\\n\\n**Orca workspace setup — read and follow these instructions:**\\n\\n${skill_escaped}\\n\\n${project_escaped}\\n</EXTREMELY_IMPORTANT>"
+
+# Output dual-shape JSON (additionalContext for Claude Code, additional_context for Cursor)
+cat <<EOF
+{
+  "additional_context": "${session_ctx}",
+  "hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": "${session_ctx}"
+  }
+}
+EOF
+
+exit 0
