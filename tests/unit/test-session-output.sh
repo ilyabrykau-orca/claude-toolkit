@@ -5,24 +5,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
 
-HOOK="${PLUGIN_ROOT}/hooks/session-start"
-passed=0; failed=0
+setup_sandbox
+trap cleanup_sandbox EXIT
 
-run_hook_from() {
-    local dir="$1"
-    cd "$dir" 2>/dev/null && bash "$HOOK" 2>/dev/null
-}
+passed=0; failed=0
 
 echo "=== Unit: session-start output shape ==="
 echo ""
 
-# Test from orca dir
-output=$(run_hook_from /Users/ilyabrykau/src/orca)
+# Test from orca dir (using sandbox)
+output=$(run_hook_from "$SANDBOX/src/orca")
 
 if assert_valid_json "$output" "output is valid JSON"; then
     passed=$((passed+1)); else failed=$((failed+1))
 fi
 if assert_json_field "$output" '.hookSpecificOutput.additionalContext' "hookSpecificOutput.additionalContext present"; then
+    passed=$((passed+1)); else failed=$((failed+1))
+fi
+if assert_json_field "$output" '.hookSpecificOutput.hookEventName' "hookSpecificOutput.hookEventName present"; then
     passed=$((passed+1)); else failed=$((failed+1))
 fi
 if assert_json_field "$output" '.additional_context' "additional_context present (Cursor compat)"; then
@@ -41,7 +41,7 @@ if assert_contains "$output" "find_referencing_symbols" "contains find_referenci
     passed=$((passed+1)); else failed=$((failed+1))
 fi
 
-# Test from unknown dir — should still produce valid JSON without activation
+# Test from unknown dir -- should still produce valid JSON without activation
 echo ""
 echo "--- From /tmp (no project) ---"
 output2=$(run_hook_from /tmp)
