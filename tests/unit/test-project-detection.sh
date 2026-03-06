@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Unit test: session-start hook project detection
-# Tests hook output from different $PWD values. No LLM needed.
+# Tests hook output from different $PWD values using portable sandbox.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
+
+setup_sandbox
+trap cleanup_sandbox EXIT
 
 HOOK="${PLUGIN_ROOT}/hooks/session-start"
 passed=0; failed=0
@@ -33,15 +36,15 @@ run_test() {
 echo "=== Unit: project detection ==="
 echo ""
 
-run_test "/Users/ilyabrykau/src"                         "orca-unified"          "src/ → orca-unified"
-run_test "/Users/ilyabrykau/src/orca"                    "orca"                  "orca/ → orca"
-run_test "/Users/ilyabrykau/src/orca/base_api"           "orca"                  "orca subdir → orca"
-run_test "/Users/ilyabrykau/src/orca-sensor"             "orca-sensor"           "orca-sensor/ → orca-sensor"
-run_test "/Users/ilyabrykau/src/orca-sensor/pkg"           "orca-sensor"           "orca-sensor subdir → orca-sensor"
-run_test "/Users/ilyabrykau/src/orca-runtime-sensor"     "orca-runtime-sensor"   "runtime-sensor/ → orca-runtime-sensor"
-run_test "/Users/ilyabrykau/src/helm-charts"             "helm-charts"           "helm-charts/ → helm-charts"
-run_test "/tmp"                                           ""                      "/tmp → no activation"
-run_test "/Users/ilyabrykau"                             ""                      "home → no activation"
+run_test "$SANDBOX/src"                         "orca-unified"          "src/ → orca-unified"
+run_test "$SANDBOX/src/orca"                    "orca"                  "orca/ → orca"
+run_test "$SANDBOX/src/orca/base_api"           "orca"                  "orca subdir → orca"
+run_test "$SANDBOX/src/orca-sensor"             "orca-sensor"           "orca-sensor/ → orca-sensor"
+run_test "$SANDBOX/src/orca-sensor/pkg"         "orca-sensor"           "orca-sensor subdir → orca-sensor"
+run_test "$SANDBOX/src/orca-runtime-sensor"     "orca-runtime-sensor"   "runtime-sensor/ → orca-runtime-sensor"
+run_test "$SANDBOX/src/helm-charts"             "helm-charts"           "helm-charts/ → helm-charts"
+run_test "/tmp"                                 ""                      "/tmp → no activation"
+run_test "$SANDBOX"                             ""                      "sandbox root → no activation"
 
 echo ""
 echo "Passed: $passed  Failed: $failed"
