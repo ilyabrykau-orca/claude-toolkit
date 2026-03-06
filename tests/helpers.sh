@@ -3,6 +3,8 @@
 
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# --- Assertions ---
+
 assert_contains() {
     local output="$1"
     local pattern="$2"
@@ -13,8 +15,8 @@ assert_contains() {
     else
         echo "  [FAIL] $test_name"
         echo "  Expected pattern: $pattern"
-        echo "  In output:"
-        echo "$output" | sed 's/^/    /'
+        echo "  In output (first 200 chars):"
+        echo "    ${output:0:200}"
         return 1
     fi
 }
@@ -26,10 +28,54 @@ assert_not_contains() {
     if echo "$output" | grep -qE "$pattern"; then
         echo "  [FAIL] $test_name"
         echo "  Did not expect: $pattern"
+        echo "  In output (first 200 chars):"
+        echo "    ${output:0:200}"
         return 1
     else
         echo "  [PASS] $test_name"
         return 0
+    fi
+}
+
+assert_count() {
+    local output="$1"
+    local pattern="$2"
+    local expected="$3"
+    local test_name="${4:-count check}"
+    local actual
+    actual=$(echo "$output" | grep -oE "$pattern" | wc -l | tr -d ' ')
+    if [ "$actual" -eq "$expected" ]; then
+        echo "  [PASS] $test_name"
+        return 0
+    else
+        echo "  [FAIL] $test_name"
+        echo "  Expected $expected occurrences of: $pattern"
+        echo "  Got: $actual"
+        return 1
+    fi
+}
+
+assert_order() {
+    local output="$1"
+    local pattern_a="$2"
+    local pattern_b="$3"
+    local test_name="${4:-order check}"
+    local pos_a pos_b
+    pos_a=$(echo "$output" | grep -nE "$pattern_a" | head -1 | cut -d: -f1)
+    pos_b=$(echo "$output" | grep -nE "$pattern_b" | head -1 | cut -d: -f1)
+    if [ -z "$pos_a" ] || [ -z "$pos_b" ]; then
+        echo "  [FAIL] $test_name - pattern not found"
+        [ -z "$pos_a" ] && echo "  Missing: $pattern_a"
+        [ -z "$pos_b" ] && echo "  Missing: $pattern_b"
+        return 1
+    fi
+    if [ "$pos_a" -lt "$pos_b" ]; then
+        echo "  [PASS] $test_name"
+        return 0
+    else
+        echo "  [FAIL] $test_name"
+        echo "  Expected '$pattern_a' (line $pos_a) before '$pattern_b' (line $pos_b)"
+        return 1
     fi
 }
 
@@ -41,7 +87,7 @@ assert_valid_json() {
         return 0
     else
         echo "  [FAIL] $test_name - not valid JSON"
-        echo "$output" | sed 's/^/    /'
+        echo "    ${output:0:200}"
         return 1
     fi
 }
@@ -59,6 +105,34 @@ assert_json_field() {
         echo "  [FAIL] $test_name - field '$field' missing or null"
         return 1
     fi
+}
+
+# --- Sandbox ---
+
+setup_sandbox() {
+    SANDBOX=$(mktemp -d)
+    mkdir -p "$SANDBOX/src/orca/base_api"
+    mkdir -p "$SANDBOX/src/orca-sensor/pkg"
+    mkdir -p "$SANDBOX/src/orca-runtime-sensor"
+    mkdir -p "$SANDBOX/src/helm-charts"
+    export SANDBOX
+}
+
+cleanup_sandbox() {
+    if [ -n "$SANDBOX" ] && [ -d "$SANDBOX" ]; then
+        rm -rf "$SANDBOX"
+        unset SANDBOX
+    fi
+}
+
+# --- Runners ---
+
+run_hook_from() {
+    local dir="$1"
+    local hook="${2:-$PLUGIN_ROOT/hooks/session-start}"
+    (
+        cd "$dir" && bash "$hook" 2>/dev/null
+    )
 }
 
 run_claude() {
@@ -88,9 +162,16 @@ run_claude() {
     rm -f "$output_file"
 }
 
+# --- Exports ---
+
 export -f assert_contains
 export -f assert_not_contains
+export -f assert_count
+export -f assert_order
 export -f assert_valid_json
 export -f assert_json_field
+export -f setup_sandbox
+export -f cleanup_sandbox
+export -f run_hook_from
 export -f run_claude
 export PLUGIN_ROOT
