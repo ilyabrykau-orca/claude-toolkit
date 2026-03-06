@@ -1,6 +1,6 @@
 {
   "name": "orca-env",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Orca workspace plugin: auto-activates Serena by cwd, injects tool-routing rules at session start.",
   "author": {
     "name": "ilyabrykau"
