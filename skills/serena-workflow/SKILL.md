@@ -23,23 +23,23 @@ Before ANY code edit:
 | Add new code before first symbol | `insert_before_symbol` |
 | Rename across whole codebase | `rename_symbol` |
 
-## replace_content Regex Tips
+## replace_content Usage
 
 ```python
 # Replace specific line pattern within a file
 mcp__serena__replace_content(
     relative_path="orca/base_api/sensors/my_sensor.py",
-    pattern="def old_method_name\\(",
-    replacement="def new_method_name(",
-    is_regex=True
+    needle="def old_method_name\\(",
+    repl="def new_method_name(",
+    mode="regex"
 )
 
 # Replace with wildcards (match anything between)
 mcp__serena__replace_content(
     relative_path="...",
-    pattern="some_var = .*",
-    replacement="some_var = new_value",
-    is_regex=True
+    needle="some_var = .*",
+    repl="some_var = new_value",
+    mode="regex"
 )
 ```
 
