@@ -42,24 +42,16 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
-# If no project detected, output minimal JSON and exit
-if [ -z "$project" ]; then
-    cat <<EOF
-{
-  "additional_context": "",
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": ""
-  }
-}
-EOF
-    exit 0
-fi
-
 skill_escaped=$(escape_for_json "$skill_content")
 project_escaped=$(escape_for_json "$project_ctx")
 
-session_ctx="<EXTREMELY_IMPORTANT>\\nYou have orca workspace superpowers.\\n\\n**Orca workspace setup — read and follow these instructions:**\\n\\n${skill_escaped}\\n\\n${project_escaped}\\n</EXTREMELY_IMPORTANT>"
+# Always inject at minimum the enforcement block + skill content.
+# If no project detected, skip the activation call but still enforce tool routing.
+session_ctx="<EXTREMELY_IMPORTANT>\\nYou have orca workspace superpowers.\\n\\n**Orca workspace setup — read and follow these instructions:**\\n\\n${skill_escaped}"
+if [ -n "$project" ]; then
+    session_ctx="${session_ctx}\\n\\n${project_escaped}"
+fi
+session_ctx="${session_ctx}\\n</EXTREMELY_IMPORTANT>"
 
 # Output dual-shape JSON (additionalContext for Claude Code, additional_context for Cursor)
 cat <<EOF

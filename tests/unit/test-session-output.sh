@@ -49,7 +49,7 @@ output2=$(run_hook_from /tmp)
 if assert_valid_json "$output2" "output valid JSON (no project)"; then
     passed=$((passed+1)); else failed=$((failed+1))
 fi
-if assert_not_contains "$output2" "activate_project" "no activation for unknown dir"; then
+if assert_not_contains "$output2" "SERENA WORKSPACE DETECTED" "no project-specific activation for unknown dir"; then
     passed=$((passed+1)); else failed=$((failed+1))
 fi
 

@@ -25,7 +25,7 @@ run_test() {
             failed=$((failed+1))
         fi
     else
-        if assert_not_contains "$output" "activate_project" "$test_name (no activation expected)"; then
+        if assert_not_contains "$output" "SERENA WORKSPACE DETECTED" "$test_name (no activation expected)"; then
             passed=$((passed+1))
         else
             failed=$((failed+1))
