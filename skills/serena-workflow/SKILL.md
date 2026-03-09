@@ -1,16 +1,18 @@
 ---
 name: serena-workflow
-description: Use when doing complex refactoring, multi-file edits, or when you need detailed Serena symbolic editing patterns. Covers find_referencing_symbols, replace_symbol_body, replace_content, and cross-session memory patterns.
+description: Serena editing workflow — symbol-level editing, replace_content, memory management. Use for ALL code editing tasks in orca repos.
 ---
 
-# Serena Symbolic Editing Workflow
+# Serena Editing Workflow
+
+Native Edit/Write are HARD-BLOCKED on code files. Use Serena for all code editing.
 
 ## Mandatory Pre-Edit Checklist
 
 Before ANY code edit:
-1. `mcp__serena__find_referencing_symbols(symbol_name="<target>")` — find all call sites
+1. `mcp__serena__find_referencing_symbols(name_path="target_symbol", relative_path="path/to/file.py")` — **`relative_path` must be a FILE, not a directory**
 2. Review references — understand impact scope
-3. Create task plan (TaskCreate)
+3. Plan with TaskCreate: research → implement → verify
 4. Get user approval
 
 ## Edit Tool Selection
@@ -18,42 +20,151 @@ Before ANY code edit:
 | Situation | Tool |
 |-----------|------|
 | Replace entire function/class/method | `replace_symbol_body` |
-| Edit few lines within a larger symbol | `replace_content` (regex) |
+| Edit few lines within a larger symbol | `replace_content` |
 | Add new code after existing symbol | `insert_after_symbol` |
 | Add new code before first symbol | `insert_before_symbol` |
 | Rename across whole codebase | `rename_symbol` |
 
-## replace_content Usage
+## A. replace_symbol_body
 
 ```python
-# Replace specific line pattern within a file
+mcp__serena__replace_symbol_body(
+    name_path="MyClass/process_data",
+    relative_path="orca/sensors/processor.py",
+    body="def process_data(self, event):\n    return self.transform(event)"
+)
+```
+
+Note: `body` is the implementation only — excludes docstrings and leading comments.
+
+## B. replace_content
+
+```python
+# Literal replacement (exact string match)
 mcp__serena__replace_content(
-    relative_path="orca/base_api/sensors/my_sensor.py",
-    needle="def old_method_name\\(",
-    repl="def new_method_name(",
+    relative_path="orca/config.py",
+    needle="TIMEOUT = 30",
+    repl="TIMEOUT = 60",
+    mode="literal"
+)
+
+# Regex with wildcards (preferred — avoids quoting full text)
+mcp__serena__replace_content(
+    relative_path="orca/sensors/base.py",
+    needle="def old_method\\(self\\).*?return result",
+    repl="def new_method(self):\n    return self.compute()",
     mode="regex"
 )
 
-# Replace with wildcards (match anything between)
+# Regex with backreferences — use $!1, $!2 (NOT \1, \2)
 mcp__serena__replace_content(
-    relative_path="...",
-    needle="some_var = .*",
-    repl="some_var = new_value",
+    relative_path="orca/utils.py",
+    needle="log\\(\"(.*?)\"\\)",
+    repl="logger.info(\"$!1\")",
     mode="regex"
 )
 ```
 
-## Memory Patterns
+## C. Insert Code
 
 ```python
-# Write architectural decision
+# After an existing symbol
+mcp__serena__insert_after_symbol(
+    name_path="existing_function",
+    relative_path="orca/utils.py",
+    body="\ndef new_function():\n    pass"
+)
+
+# Before an existing symbol (e.g. add imports at top of file)
+mcp__serena__insert_before_symbol(
+    name_path="first_class",
+    relative_path="orca/models.py",
+    body="import logging\n\nlogger = logging.getLogger(__name__)\n"
+)
+```
+
+## D. Rename Across Codebase
+
+```python
+mcp__serena__rename_symbol(
+    name_path="OldClassName",
+    relative_path="orca/models.py",
+    new_name="NewClassName"
+)
+```
+
+## Reading Code
+
+```python
+# Read symbol with source (token-efficient — preferred)
+mcp__serena__find_symbol(
+    name_path_pattern="MyClass/my_method",
+    include_body=True,
+    relative_path="orca/sensors/"
+)
+
+# File overview — what symbols exist
+mcp__serena__get_symbols_overview(
+    relative_path="orca/sensors/base.py",
+    depth=1
+)
+
+# Regex search across files
+mcp__serena__search_for_pattern(
+    substring_pattern="TODO|FIXME",
+    paths_include_glob="**/*.py",
+    relative_path="orca/"
+)
+
+# Read file range (0-based lines, end_line inclusive)
+mcp__serena__read_file(
+    relative_path="orca/sensors/base.py",
+    start_line=0,
+    end_line=49
+)
+```
+
+## Memory
+
+```python
+# Save (memory_name — no .md extension needed)
 mcp__serena__write_memory(
-    memory_file="kafka_migration.md",
-    content="# Kafka Migration Notes\n\nDecision: use confluent-kafka not aiokafka because..."
+    memory_name="kafka_migration",
+    content="# Kafka Migration\n\nDecision: use confluent-kafka..."
 )
 
-# Read at session start
+# Read
+mcp__serena__read_memory(memory_name="cross_project_map")
+
+# List all
 mcp__serena__list_memories()
-mcp__serena__read_memory(memory_file="cross_project_map.md")
-mcp__serena__read_memory(memory_file="unified_style.md")
+
+# Edit in place
+mcp__serena__edit_memory(
+    memory_name="kafka_migration",
+    needle="confluent-kafka",
+    repl="confluent-kafka-python",
+    mode="literal"
+)
 ```
+
+## Key Gotchas
+
+| Gotcha | Rule |
+|--------|------|
+| `find_referencing_symbols` path | Must be a **FILE**, not a directory |
+| `replace_content` backrefs | `$!1`, `$!2` — NOT `\1`, `\2` |
+| `replace_symbol_body` body | Implementation only — no docstrings/comments |
+| `read_file` lines | 0-based; `end_line` is inclusive |
+| `mode` values | Exactly `"literal"` or `"regex"` (lowercase) |
+| Memory key | `memory_name` — NOT `memory_file`, NOT `name` |
+| `find_symbol` param | `name_path_pattern` — NOT `name` or `symbol_name` |
+
+## Wrong vs Right
+
+| Wrong | Right |
+|-------|-------|
+| `find_referencing_symbols(symbol_name="Foo")` | `find_referencing_symbols(name_path="Foo", relative_path="orca/file.py")` |
+| `write_memory(memory_file="x.md", ...)` | `write_memory(memory_name="x", ...)` |
+| `read_memory(memory_file="cross_project_map.md")` | `read_memory(memory_name="cross_project_map")` |
+| `find_symbol(name="Foo", include_body=True)` | `find_symbol(name_path_pattern="Foo", include_body=True)` |
