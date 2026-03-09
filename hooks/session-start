@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # SessionStart hook: detect Serena project + inject orca-setup skill
-# Pattern: identical to superpowers/hooks/session-start
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
