@@ -2,11 +2,19 @@
 # PreToolUse hook: block native Read/Edit/Write/Grep/Glob on code files
 # Route to Codanna/Serena MCP tools instead.
 # Exit 2 = block tool call, stderr shown to Claude as error.
-# Exit 0 = allow.
+# Exit 0 = allow (including on any parse/tool error — fail open).
 set -euo pipefail
 
 # Read JSON input from stdin
 input=$(cat)
+
+# Fail open: if jq is missing or input is not valid JSON, allow the tool call
+if ! command -v jq >/dev/null 2>&1; then
+    exit 0
+fi
+if ! echo "$input" | jq . >/dev/null 2>&1; then
+    exit 0
+fi
 
 # Extract tool name and file path
 tool_name=$(echo "$input" | jq -r '.tool_name // empty')
