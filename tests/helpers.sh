@@ -9,7 +9,7 @@ assert_contains() {
     local output="$1"
     local pattern="$2"
     local test_name="${3:-test}"
-    if echo "$output" | grep -qE "$pattern"; then
+    if echo "$output" | /usr/bin/grep -qE "$pattern"; then
         echo "  [PASS] $test_name"
         return 0
     else
@@ -25,7 +25,7 @@ assert_not_contains() {
     local output="$1"
     local pattern="$2"
     local test_name="${3:-test}"
-    if echo "$output" | grep -qE "$pattern"; then
+    if echo "$output" | /usr/bin/grep -qE "$pattern"; then
         echo "  [FAIL] $test_name"
         echo "  Did not expect: $pattern"
         echo "  In output (first 200 chars):"
@@ -43,7 +43,7 @@ assert_count() {
     local expected="$3"
     local test_name="${4:-count check}"
     local actual
-    actual=$(echo "$output" | grep -oE "$pattern" | wc -l | tr -d ' ')
+    actual=$(echo "$output" | /usr/bin/grep -oE "$pattern" | wc -l | tr -d ' ')
     if [ "$actual" -eq "$expected" ]; then
         echo "  [PASS] $test_name"
         return 0
@@ -61,8 +61,8 @@ assert_order() {
     local pattern_b="$3"
     local test_name="${4:-order check}"
     local pos_a pos_b
-    pos_a=$(echo "$output" | grep -nE "$pattern_a" | head -1 | cut -d: -f1)
-    pos_b=$(echo "$output" | grep -nE "$pattern_b" | head -1 | cut -d: -f1)
+    pos_a=$(echo "$output" | /usr/bin/grep -nE "$pattern_a" | head -1 | cut -d: -f1)
+    pos_b=$(echo "$output" | /usr/bin/grep -nE "$pattern_b" | head -1 | cut -d: -f1)
     if [ -z "$pos_a" ] || [ -z "$pos_b" ]; then
         echo "  [FAIL] $test_name - pattern not found"
         [ -z "$pos_a" ] && echo "  Missing: $pattern_a"

@@ -70,26 +70,38 @@ if [ -f "$HOOKS_JSON" ]; then
     fi
 fi
 
-# --- 3. run-hook.cmd ---
+# --- 3. pre-tool-use ---
 echo ""
-echo "--- hooks/run-hook.cmd ---"
+echo "--- hooks/pre-tool-use ---"
 
-RUN_HOOK="${PLUGIN_ROOT}/hooks/run-hook.cmd"
+PRE_TOOL_USE="${PLUGIN_ROOT}/hooks/pre-tool-use"
 
-if [ -f "$RUN_HOOK" ]; then
-    echo "  [PASS] run-hook.cmd exists"
+if [ -f "$PRE_TOOL_USE" ]; then
+    echo "  [PASS] pre-tool-use exists"
     passed=$((passed+1))
 else
-    echo "  [FAIL] run-hook.cmd missing at $RUN_HOOK"
+    echo "  [FAIL] pre-tool-use missing at $PRE_TOOL_USE"
     failed=$((failed+1))
 fi
 
-if [ -x "$RUN_HOOK" ]; then
-    echo "  [PASS] run-hook.cmd is executable"
+if [ -x "$PRE_TOOL_USE" ]; then
+    echo "  [PASS] pre-tool-use is executable"
     passed=$((passed+1))
 else
-    echo "  [FAIL] run-hook.cmd is not executable"
+    echo "  [FAIL] pre-tool-use is not executable"
     failed=$((failed+1))
+fi
+
+# Check hooks.json registers PreToolUse
+if [ -f "$HOOKS_JSON" ]; then
+    has_pretooluse=$(cat "$HOOKS_JSON" | jq -r '.hooks | has("PreToolUse")' 2>/dev/null || echo "false")
+    if [ "$has_pretooluse" = "true" ]; then
+        echo "  [PASS] hooks.json has PreToolUse key"
+        passed=$((passed+1))
+    else
+        echo "  [FAIL] hooks.json missing PreToolUse key"
+        failed=$((failed+1))
+    fi
 fi
 
 # --- 4. session-start ---

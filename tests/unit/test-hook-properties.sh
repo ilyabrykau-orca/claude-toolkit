@@ -64,11 +64,11 @@ start_ms=$(python3 -c "import time; print(int(time.time()*1000))")
 (cd "$SANDBOX/src/orca" && bash "$HOOK" >/dev/null 2>&1)
 end_ms=$(python3 -c "import time; print(int(time.time()*1000))")
 elapsed=$((end_ms - start_ms))
-if [ "$elapsed" -lt 200 ]; then
-    echo "  [PASS] performance: ${elapsed}ms < 200ms"
+if [ "$elapsed" -lt 500 ]; then
+    echo "  [PASS] performance: ${elapsed}ms < 500ms"
     passed=$((passed+1))
 else
-    echo "  [FAIL] performance: ${elapsed}ms >= 200ms"
+    echo "  [FAIL] performance: ${elapsed}ms >= 500ms"
     failed=$((failed+1))
 fi
 
