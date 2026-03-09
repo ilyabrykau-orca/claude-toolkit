@@ -127,21 +127,21 @@ mcp__serena__read_file(
 ## Memory
 
 ```python
-# Save (memory_name — no .md extension needed)
+# Save (memory_file_name — no .md extension needed)
 mcp__serena__write_memory(
-    memory_name="kafka_migration",
+    memory_file_name="kafka_migration",
     content="# Kafka Migration\n\nDecision: use confluent-kafka..."
 )
 
 # Read
-mcp__serena__read_memory(memory_name="cross_project_map")
+mcp__serena__read_memory(memory_file_name="cross_project_map")
 
 # List all
 mcp__serena__list_memories()
 
 # Edit in place
 mcp__serena__edit_memory(
-    memory_name="kafka_migration",
+    memory_file_name="kafka_migration",
     needle="confluent-kafka",
     repl="confluent-kafka-python",
     mode="literal"
@@ -157,7 +157,7 @@ mcp__serena__edit_memory(
 | `replace_symbol_body` body | Implementation only — no docstrings/comments |
 | `read_file` lines | 0-based; `end_line` is inclusive |
 | `mode` values | Exactly `"literal"` or `"regex"` (lowercase) |
-| Memory key | `memory_name` — NOT `memory_file`, NOT `name` |
+| Memory key | `memory_file_name` — NOT `memory_name`, `memory_file`, `name` |
 | `find_symbol` param | `name_path_pattern` — NOT `name` or `symbol_name` |
 
 ## Wrong vs Right
@@ -165,6 +165,6 @@ mcp__serena__edit_memory(
 | Wrong | Right |
 |-------|-------|
 | `find_referencing_symbols(symbol_name="Foo")` | `find_referencing_symbols(name_path="Foo", relative_path="orca/file.py")` |
-| `write_memory(memory_file="x.md", ...)` | `write_memory(memory_name="x", ...)` |
-| `read_memory(memory_file="cross_project_map.md")` | `read_memory(memory_name="cross_project_map")` |
+| `write_memory(memory_file="x.md", ...)` | `write_memory(memory_file_name="x", ...)` |
+| `read_memory(memory_file="cross_project_map.md")` | `read_memory(memory_file_name="cross_project_map")` |
 | `find_symbol(name="Foo", include_body=True)` | `find_symbol(name_path_pattern="Foo", include_body=True)` |

@@ -26,7 +26,7 @@ Then load memories:
 
 ```
 mcp__serena__list_memories()
-mcp__serena__read_memory(memory_name="cross_project_map")
+mcp__serena__read_memory(memory_file_name="cross_project_map")
 ```
 
 ---
@@ -127,10 +127,10 @@ At session start: `mcp__serena__list_memories()` → read relevant ones.
 
 ```python
 mcp__serena__write_memory(
-    memory_name="kafka_migration",
+    memory_file_name="kafka_migration",
     content="# Kafka Migration\n\nDecision: use confluent-kafka..."
 )
-mcp__serena__read_memory(memory_name="cross_project_map")
+mcp__serena__read_memory(memory_file_name="cross_project_map")
 ```
 
 ---
@@ -163,7 +163,7 @@ Copy-paste correct parameter names. No aliases work.
 | `replace_content` | params | `needle`, `repl`, `mode` | `pattern`, `replacement`, `is_regex` |
 | `replace_content` | mode values | `"literal"` or `"regex"` | `True`, `false`, `"regexp"` |
 | `replace_content` | backrefs | `$!1`, `$!2` | `\1`, `\2` |
-| All memory tools | key | `memory_name` | `memory_file`, `name` |
+| All memory tools | key | `memory_file_name` | `memory_name`, `memory_file`, `name` |
 | `find_symbol` (Serena) | symbol | `name_path_pattern` | `name`, `symbol_name` |
 | `read_file` | lines | 0-based, `end_line` inclusive | 1-based |
 
