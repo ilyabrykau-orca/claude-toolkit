@@ -1,108 +1,177 @@
 ---
 name: orca-setup
-description: Orca workspace setup — tool routing, Serena/Codanna patterns, memory protocol. Auto-injected at session start.
+description: Orca workspace setup — tool routing enforcement, Codanna/Serena patterns, memory protocol. Auto-injected at session start.
 ---
 
 # Orca Workspace Setup
 
-You are working in the orca multi-repo workspace. This skill is injected automatically at every session start.
+## TOOL ENFORCEMENT ACTIVE
 
-## Auto-Activation (Already Done)
+Native `Read`, `Edit`, `Write`, `Grep`, `Glob` are **HARD-BLOCKED** on code files (.py, .go, .ts, .tsx, .js, .jsx, .rs, .cpp, .c, .h, .hpp, .rb, .java).
+A PreToolUse hook returns exit 2 if you attempt to use them. Use MCP tools instead.
 
-The `session-start` hook has already determined your project from `$PWD` and provided an activation command above. Execute it immediately:
+Non-code files (.json, .yaml, .md, .toml, .cfg, .sh, Makefile, Dockerfile) → native tools allowed.
+
+---
+
+## Step 1: Activate Project
+
+Execute immediately:
 
 ```
 mcp__serena__activate_project(project=<detected-project>)
 ```
 
-After activation, read relevant memories:
+Then load memories:
+
 ```
 mcp__serena__list_memories()
-→ mcp__serena__read_memory(memory_file=<relevant>.md)  # for each relevant memory
+mcp__serena__read_memory(memory_name="cross_project_map")
 ```
 
-## Tool Routing (MANDATORY)
+---
 
-For ALL code files (.py, .go, .ts, .tsx, .js, .jsx, .rs, .cpp, .c, .h, .rb, .sh):
+## Step 2: Tool Routing
 
-| Task | Use This Chain |
-|------|---------------|
-| Search / understand | `mcp__codanna__semantic_search_with_context` → `mcp__codanna__find_symbol` → `mcp__serena__search_for_pattern` |
-| Read symbol body | `mcp__codanna__find_symbol` → `mcp__serena__find_symbol(include_body=True)` → `mcp__serena__read_file` |
-| Edit code | `mcp__serena__replace_symbol_body` → `mcp__serena__replace_content` → `mcp__serena__insert_after_symbol` |
-| Find references | `mcp__serena__find_referencing_symbols` (ALWAYS before any edit) |
-| Impact analysis | `mcp__codanna__analyze_impact` |
-| Library docs | `mcp__docs__search_docs` → `WebFetch` |
+### Search Code
 
-## NEVER / ALWAYS Rules
+```python
+# Broad "how does X work?" — returns docs + callers + calls
+mcp__codanna__semantic_search_with_context(query="how does kafka offset commit work", lang="python", limit=5)
 
-**NEVER** use native `Read`, `Edit`, `Write`, `Grep`, `Glob` on code files.
-Native tools are allowed ONLY for: JSON, YAML, Markdown, config, shell scripts.
+# Exact symbol lookup by name
+mcp__codanna__find_symbol(name="AbstractSensor", lang="python", kind="class")
 
-**ALWAYS** call `mcp__serena__find_referencing_symbols` before any edit.
-**ALWAYS** use `mcp__codanna__semantic_search_with_context` first for broad "how does X work" questions.
-**ALWAYS** use `mcp__codanna__find_symbol` for exact name lookups.
-
-## Codanna Query Patterns
-
-```
-# Broad concept search
-mcp__codanna__semantic_search_with_context(query="how does asset scanning work")
-
-# Exact symbol lookup
-mcp__codanna__find_symbol(name="AbstractSensor", language="python")
-
-# Fuzzy search with kind filter
-mcp__codanna__search_symbols(query="sensor", kind="class", language="python")
-
-# Call graph
-mcp__codanna__get_calls(symbol_id="...", depth=2)
-mcp__codanna__find_callers(symbol_id="...")
-
-# Impact before risky change
-mcp__codanna__analyze_impact(symbol_id="...")
-
-# Docs search
-mcp__codanna__semantic_search_docs(query="kafka consumer configuration")
+# Fuzzy search with filters
+mcp__codanna__search_symbols(query="sensor", kind="class", lang="python", limit=10)
 ```
 
-## Serena Editing Protocol
+### Read Code
 
-Before ANY edit:
-1. `mcp__serena__find_referencing_symbols(symbol_name="...")` — trace all references
-2. Plan with TaskCreate: research → implement → verify
-3. Get explicit user approval ("go ahead", "proceed", "yes")
+```python
+# Read symbol with body (preferred — token efficient)
+mcp__serena__find_symbol(name_path_pattern="AbstractSensor", include_body=True, relative_path="orca/sensors/")
 
-Edit tools:
-- Replace whole symbol: `mcp__serena__replace_symbol_body`
-- Targeted regex edit: `mcp__serena__replace_content`
-- Add code: `mcp__serena__insert_after_symbol` / `mcp__serena__insert_before_symbol`
-- Codebase-wide rename: `mcp__serena__rename_symbol`
+# Read file range
+mcp__serena__read_file(relative_path="orca/sensors/base.py", start_line=10, end_line=50)
+```
 
-## Memory Protocol
+### Edit Code — The Golden Loop
 
-At session start (MANDATORY):
-1. `mcp__serena__list_memories()` — see what's available
-2. `mcp__serena__read_memory(memory_file="cross_project_map.md")` — always read this one
-3. Read any other memories relevant to the current task
+1. **Search**: `mcp__codanna__semantic_search_with_context(query="...")`
+2. **Locate**: `mcp__codanna__find_symbol(name="...", lang="...")`
+3. **Trace**: `mcp__serena__find_referencing_symbols(name_path="TargetFunc", relative_path="orca/module/file.py")` — **FILE path, not directory. MANDATORY before any edit.**
+4. **Plan**: TaskCreate with research → implement → verify
+5. **Edit**: Serena tools (see below)
+6. **Verify**: `pytest` / `go test`
 
-At session end (save learnings):
-- `mcp__serena__write_memory(...)` for significant decisions, patterns, or architectural insights
+### Edit Tools
 
-## Projects in This Workspace
+```python
+# Replace entire function/class (safest)
+mcp__serena__replace_symbol_body(
+    name_path="MyClass/process_data",
+    relative_path="orca/sensors/processor.py",
+    body="def process_data(self, event):\n    return self.transform(event)"
+)
 
-| Project | Path | Language | Activate With |
-|---------|------|----------|---------------|
-| orca-unified | /Users/ilyabrykau/src | Python+Go | `orca-unified` |
-| orca | /Users/ilyabrykau/src/orca | Python/Django | `orca` |
-| orca-sensor | /Users/ilyabrykau/src/orca-sensor | Go | `orca-sensor` |
-| orca-runtime-sensor | /Users/ilyabrykau/src/orca-runtime-sensor | Go+eBPF | `orca-runtime-sensor` |
-| helm-charts | /Users/ilyabrykau/src/helm-charts | YAML | `helm-charts` |
+# Targeted literal edit
+mcp__serena__replace_content(
+    relative_path="orca/config.py",
+    needle="TIMEOUT = 30",
+    repl="TIMEOUT = 60",
+    mode="literal"
+)
 
-## Verification Before Claiming Done
+# Regex edit — backreferences use $!1, $!2 (NOT \1, \2)
+mcp__serena__replace_content(
+    relative_path="orca/sensors/base.py",
+    needle="log\\(\"(.*?)\"\\)",
+    repl="logger.info(\"$!1\")",
+    mode="regex"
+)
 
-Show actual command output before claiming anything works:
+# Insert after existing symbol
+mcp__serena__insert_after_symbol(
+    name_path="existing_function",
+    relative_path="orca/utils.py",
+    body="\ndef new_function():\n    pass"
+)
+```
+
+### Call Graph
+
+```python
+# Who calls this? (use before modifying shared code)
+mcp__codanna__find_callers(function_name="process_event")
+
+# What does this call?
+mcp__codanna__get_calls(function_name="handle_request")
+
+# Full impact before risky refactor
+mcp__codanna__analyze_impact(symbol_name="SensorBase", max_depth=3)
+```
+
+### Library Documentation
+
+```python
+mcp__docs__search_docs(library="fastapi", query="dependency injection", limit=5)
+mcp__docs__fetch_url(url="https://docs.example.com/api")
+```
+
+---
+
+## Step 3: Memory Protocol
+
+At session start: `mcp__serena__list_memories()` → read relevant ones.
+
+```python
+mcp__serena__write_memory(
+    memory_name="kafka_migration",
+    content="# Kafka Migration\n\nDecision: use confluent-kafka..."
+)
+mcp__serena__read_memory(memory_name="cross_project_map")
+```
+
+---
+
+## Projects
+
+| Project | Path | Language |
+|---------|------|----------|
+| orca | ~/src/orca | Python/Django |
+| orca-sensor | ~/src/orca-sensor | Go |
+| orca-runtime-sensor | ~/src/orca-runtime-sensor | Go+eBPF |
+| orca-unified | ~/src | Python+Go (multi-repo) |
+| helm-charts | ~/src/helm-charts | YAML |
+
+---
+
+## Params Cheat Sheet
+
+Copy-paste correct parameter names. No aliases work.
+
+| Tool | Param | Correct | WRONG (do not use) |
+|------|-------|---------|---------------------|
+| `find_symbol` (Codanna) | language | `lang` | `language` |
+| `search_symbols` | language | `lang` | `language` |
+| `semantic_search_with_context` | language | `lang` | `language` |
+| `find_callers` | symbol | `function_name` | `symbol_id` |
+| `get_calls` | symbol | `function_name` | `symbol_id`, `depth` |
+| `analyze_impact` | symbol | `symbol_name` | `symbol_id` |
+| `find_referencing_symbols` | symbol | `name_path` + `relative_path` (FILE) | `symbol_name`, dir path |
+| `replace_content` | params | `needle`, `repl`, `mode` | `pattern`, `replacement`, `is_regex` |
+| `replace_content` | mode values | `"literal"` or `"regex"` | `True`, `false`, `"regexp"` |
+| `replace_content` | backrefs | `$!1`, `$!2` | `\1`, `\2` |
+| All memory tools | key | `memory_name` | `memory_file`, `name` |
+| `find_symbol` (Serena) | symbol | `name_path_pattern` | `name`, `symbol_name` |
+| `read_file` | lines | 0-based, `end_line` inclusive | 1-based |
+
+---
+
+## Verification
+
+Show actual command output before claiming done:
 - Python: `pytest <path> -v`
 - Go: `go test ./...`
-- Lint Python: `ruff check .`
-- Lint Go: `golangci-lint run`
+- Lint: `ruff check .` / `golangci-lint run`
