@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# PreToolUse hook: block native Read/Edit/Write/Grep/Glob on code files
+# Route to Codanna/Serena MCP tools instead.
+# Exit 2 = block tool call, stderr shown to Claude as error.
+# Exit 0 = allow.
+set -euo pipefail
+
+# Read JSON input from stdin
+input=$(cat)
+
+# Extract tool name and file path
+tool_name=$(echo "$input" | jq -r '.tool_name // empty')
+file_path=$(echo "$input" | jq -r '.tool_input.file_path // .tool_input.path // .tool_input.pattern // empty')
+
+# If no file path, allow (e.g. Grep with only a pattern string, no path)
+if [ -z "$file_path" ]; then
+    exit 0
+fi
+
+# Code file extensions that must use MCP tools
+if echo "$file_path" | /usr/bin/grep -qE '\.(py|go|ts|tsx|js|jsx|rs|cpp|c|h|hpp|rb|java|kt|php|scala|swift)$'; then
+    # Determine which MCP tool to suggest
+    case "$tool_name" in
+        Read)
+            echo "BLOCKED: Native Read on code file '$file_path'. Use mcp__serena__find_symbol(name_path_pattern=\"...\", include_body=True) or mcp__serena__read_file(relative_path=\"...\") instead." >&2
+            ;;
+        Edit|Write)
+            echo "BLOCKED: Native $tool_name on code file '$file_path'. Use mcp__serena__replace_symbol_body or mcp__serena__replace_content(relative_path=\"...\", needle=\"...\", repl=\"...\", mode=\"regex\") instead." >&2
+            ;;
+        Grep)
+            echo "BLOCKED: Native Grep on code file '$file_path'. Use mcp__codanna__semantic_search_with_context(query=\"...\") or mcp__serena__search_for_pattern(substring_pattern=\"...\") instead." >&2
+            ;;
+        Glob)
+            echo "BLOCKED: Native Glob on code pattern '$file_path'. Use mcp__codanna__search_symbols(query=\"...\") or mcp__serena__find_file(file_mask=\"...\") instead." >&2
+            ;;
+    esac
+    exit 2
+fi
+
+# Non-code files (JSON, YAML, MD, config, etc.) — allow native tools
+exit 0
