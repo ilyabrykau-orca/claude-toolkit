@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/../helpers.sh"
 
 setup_sandbox
 SKILL="${PLUGIN_ROOT}/skills/orca-setup/SKILL.md"
-trap 'cleanup_sandbox; [ -f "${SKILL}.bak" ] && mv "${SKILL}.bak" "$SKILL"' EXIT
+trap 'cleanup_sandbox; rm -f "${SKILL}.hidden"; [ -f "${SKILL}.bak" ] && mv "${SKILL}.bak" "$SKILL"' EXIT
 
 HOOK="${PLUGIN_ROOT}/hooks/session-start"
 passed=0; failed=0

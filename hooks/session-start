@@ -10,6 +10,7 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 detect_project() {
     local cwd="$PWD"
     case "$cwd" in
+        */orca-cloud-platform*) echo "" ;;
         */orca-runtime-sensor*) echo "orca-runtime-sensor" ;;
         */orca-sensor*)         echo "orca-sensor" ;;
         */helm-charts*)         echo "helm-charts" ;;
@@ -20,7 +21,7 @@ detect_project() {
 }
 
 # Read master skill content
-skill_content=$(cat "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md" 2>/dev/null || echo "")
+skill_content=$(< "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md") 2>/dev/null || skill_content=""
 
 # Detect project
 project=$(detect_project)
@@ -28,40 +29,30 @@ project=$(detect_project)
 # Build project activation block
 project_ctx=""
 if [ -n "$project" ]; then
-    project_ctx="SERENA WORKSPACE DETECTED: project='${project}' at ${PWD}\\n\\nIMMEDIATELY call: mcp__serena__activate_project(project=${project})\\nThen: mcp__serena__list_memories() and read relevant memories."
+    project_ctx="SERENA WORKSPACE DETECTED: project='${project}' at ${PWD}
+
+IMMEDIATELY call: mcp__serena__activate_project(project=${project})
+Then: mcp__serena__list_memories() and read relevant memories."
 fi
 
-# JSON escape (identical to superpowers implementation)
-escape_for_json() {
-    local s="$1"
-    s="${s//\\/\\\\}"
-    s="${s//\"/\\\"}"
-    s="${s//$'\n'/\\n}"
-    s="${s//$'\r'/\\r}"
-    s="${s//$'\t'/\\t}"
-    printf '%s' "$s"
-}
+# Build session context as plain string (jq handles escaping)
+session_ctx="<EXTREMELY_IMPORTANT>
+You have orca workspace superpowers.
 
-skill_escaped=$(escape_for_json "$skill_content")
-project_escaped=$(escape_for_json "$project_ctx")
+**Orca workspace setup — read and follow these instructions:**
 
-# Always inject at minimum the enforcement block + skill content.
-# If no project detected, skip the activation call but still enforce tool routing.
-session_ctx="<EXTREMELY_IMPORTANT>\\nYou have orca workspace superpowers.\\n\\n**Orca workspace setup — read and follow these instructions:**\\n\\n${skill_escaped}"
+${skill_content}"
 if [ -n "$project" ]; then
-    session_ctx="${session_ctx}\\n\\n${project_escaped}"
+    session_ctx="${session_ctx}
+
+${project_ctx}"
 fi
-session_ctx="${session_ctx}\\n</EXTREMELY_IMPORTANT>"
+session_ctx="${session_ctx}
+</EXTREMELY_IMPORTANT>"
 
 # Output dual-shape JSON (additionalContext for Claude Code, additional_context for Cursor)
-cat <<EOF
-{
-  "additional_context": "${session_ctx}",
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": "${session_ctx}"
-  }
-}
-EOF
+jq -n --arg ctx "$session_ctx" \
+  '{"additional_context": $ctx,
+    "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": $ctx}}'
 
 exit 0

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# PreToolUse hook: enforces find_referencing_symbols before Serena edits.
+#
+# PERFORMANCE: Fast reject for non-edit tools (~1ms bash case).
+# Cold path (edit tool): single jaq/jq call on state file (~5ms).
+#
+# Exit 0 = allow. Exit 1 = warn. Fail-open on errors.
+
+JQ=$(command -v jq 2>/dev/null || command -v jaq 2>/dev/null) || exit 0
+
+input=$(</dev/stdin) 2>/dev/null || exit 0
+
+# Single extraction
+parsed=$(printf '%s' "$input" | "$JQ" -r \
+  '[.tool_name // "", (.tool_input.relative_path // ""), (.session_id // "")] | @tsv' \
+  2>/dev/null) || exit 0
+IFS=$'\t' read -r tool_name relative_path session_id <<< "$parsed"
+
+# Fast reject: only guard Serena edit tools
+case "$tool_name" in
+  mcp__serena__replace_symbol_body|\
+  mcp__serena__replace_content|\
+  mcp__serena__insert_after_symbol|\
+  mcp__serena__insert_before_symbol|\
+  mcp__serena__rename_symbol) ;;
+  *) exit 0 ;;
+esac
+
+[[ -n "$relative_path" ]] || exit 0
+
+# Check state file
+STATE_FILE="${CLAUDE_PLUGIN_ROOT:-/tmp}/state/refs-traced.json"
+
+warn_exit() {
+  echo "[serena-edit-guard] Editing '${relative_path}' without tracing references." >&2
+  echo "Call mcp__serena__find_referencing_symbols first to check downstream impact." >&2
+  exit 1
+}
+
+[[ -f "$STATE_FILE" ]] || warn_exit
+
+# Verify session + file traced (single jq call on state file)
+state_check=$("$JQ" -r --arg p "$relative_path" --arg s "$session_id" \
+  'if .session_id == $s and .traced[$p] != null then "ok" else "no" end' \
+  "$STATE_FILE" 2>/dev/null) || exit 0
+
+[[ "$state_check" == "ok" ]] && exit 0
+warn_exit

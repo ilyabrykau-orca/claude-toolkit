@@ -1,52 +1,70 @@
 #!/usr/bin/env bash
-# Unit test: escape_for_json edge cases
+# Unit test: JSON escaping edge cases (jq-based, no escape_for_json)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/../helpers.sh"
-
-# Extract escape_for_json from the hook
-eval "$(sed -n '/^escape_for_json/,/^}/p' "${PLUGIN_ROOT}/hooks/session-start")"
 
 passed=0; failed=0
 
 echo "=== Unit: JSON escaping edge cases ==="
 echo ""
 
+# The session-start hook now uses jq --arg for escaping.
+# Test that jq handles all edge cases correctly.
+
+wrap_json() {
+    jq -n --arg val "$1" '{"content": $val}'
+}
+
 # Test: double quotes
-result=$(escape_for_json 'say "hello"')
-if assert_contains "$result" 'say \\"hello\\"' "double quotes escaped"; then
-    passed=$((passed+1)); else failed=$((failed+1))
+json=$(wrap_json 'say "hello"')
+if echo "$json" | jq -e '.content == "say \"hello\""' >/dev/null 2>&1; then
+    echo "  [PASS] double quotes survive jq round-trip"
+    passed=$((passed+1))
+else
+    echo "  [FAIL] double quotes survive jq round-trip"
+    failed=$((failed+1))
 fi
 
 # Test: backslashes
-result=$(escape_for_json 'path\to')
-if assert_contains "$result" 'path\\\\to' "backslashes escaped"; then
-    passed=$((passed+1)); else failed=$((failed+1))
+json=$(wrap_json 'path\to')
+if echo "$json" | jq -e '.content == "path\\to"' >/dev/null 2>&1; then
+    echo "  [PASS] backslashes survive jq round-trip"
+    passed=$((passed+1))
+else
+    echo "  [FAIL] backslashes survive jq round-trip"
+    failed=$((failed+1))
 fi
 
 # Test: newlines
-result=$(escape_for_json $'line1\nline2')
-if assert_contains "$result" 'line1\\nline2' "newlines escaped"; then
-    passed=$((passed+1)); else failed=$((failed+1))
+json=$(wrap_json $'line1\nline2')
+if echo "$json" | jq -e '.content == "line1\nline2"' >/dev/null 2>&1; then
+    echo "  [PASS] newlines survive jq round-trip"
+    passed=$((passed+1))
+else
+    echo "  [FAIL] newlines survive jq round-trip"
+    failed=$((failed+1))
 fi
 
 # Test: tabs
-result=$(escape_for_json $'col1\tcol2')
-if assert_contains "$result" 'col1\\tcol2' "tabs escaped"; then
-    passed=$((passed+1)); else failed=$((failed+1))
+json=$(wrap_json $'col1\tcol2')
+if echo "$json" | jq -e '.content == "col1\tcol2"' >/dev/null 2>&1; then
+    echo "  [PASS] tabs survive jq round-trip"
+    passed=$((passed+1))
+else
+    echo "  [FAIL] tabs survive jq round-trip"
+    failed=$((failed+1))
 fi
 
 # Test: full SKILL.md wrapped in JSON validates with jq
-skill_content=$(cat "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md")
-escaped_skill=$(escape_for_json "$skill_content")
-json_wrapper="{\"content\": \"${escaped_skill}\"}"
-if echo "$json_wrapper" | jq . >/dev/null 2>&1; then
+skill_content=$(< "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md") 2>/dev/null || skill_content=""
+json=$(jq -n --arg val "$skill_content" '{"content": $val}')
+if echo "$json" | jq . >/dev/null 2>&1; then
     echo "  [PASS] SKILL.md content in JSON validates with jq"
     passed=$((passed+1))
 else
     echo "  [FAIL] SKILL.md content in JSON validates with jq"
-    echo "  jq error on wrapped SKILL.md"
     failed=$((failed+1))
 fi
 
@@ -54,14 +72,22 @@ fi
 md_table='| Tool | Use `this` | Result |
 | --- | --- | --- |
 | `grep` | pattern\here | "found" |'
-escaped_table=$(escape_for_json "$md_table")
-json_table="{\"table\": \"${escaped_table}\"}"
-if echo "$json_table" | jq . >/dev/null 2>&1; then
-    echo "  [PASS] markdown table with pipes and backticks survives escaping"
+json=$(jq -n --arg val "$md_table" '{"table": $val}')
+if echo "$json" | jq . >/dev/null 2>&1; then
+    echo "  [PASS] markdown table with pipes and backticks survives jq escaping"
     passed=$((passed+1))
 else
-    echo "  [FAIL] markdown table with pipes and backticks survives escaping"
-    echo "  jq error on markdown table"
+    echo "  [FAIL] markdown table with pipes and backticks survives jq escaping"
+    failed=$((failed+1))
+fi
+
+# Test: Unicode characters
+json=$(wrap_json 'émojis: 🎯 arrows: → ← ↑')
+if echo "$json" | jq -e '.content | test("🎯")' >/dev/null 2>&1; then
+    echo "  [PASS] Unicode characters survive jq round-trip"
+    passed=$((passed+1))
+else
+    echo "  [FAIL] Unicode characters survive jq round-trip"
     failed=$((failed+1))
 fi
 

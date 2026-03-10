@@ -9,7 +9,7 @@ assert_contains() {
     local output="$1"
     local pattern="$2"
     local test_name="${3:-test}"
-    if echo "$output" | /usr/bin/grep -qE "$pattern"; then
+    if [[ "$output" =~ $pattern ]]; then
         echo "  [PASS] $test_name"
         return 0
     else
@@ -25,7 +25,7 @@ assert_not_contains() {
     local output="$1"
     local pattern="$2"
     local test_name="${3:-test}"
-    if echo "$output" | /usr/bin/grep -qE "$pattern"; then
+    if [[ "$output" =~ $pattern ]]; then
         echo "  [FAIL] $test_name"
         echo "  Did not expect: $pattern"
         echo "  In output (first 200 chars):"
@@ -42,8 +42,11 @@ assert_count() {
     local pattern="$2"
     local expected="$3"
     local test_name="${4:-count check}"
-    local actual
-    actual=$(echo "$output" | /usr/bin/grep -oE "$pattern" | wc -l | tr -d ' ')
+    local actual=0
+    while [[ "$output" =~ $pattern ]]; do
+        actual=$((actual + 1))
+        output="${output#*${BASH_REMATCH[0]}}"
+    done
     if [ "$actual" -eq "$expected" ]; then
         echo "  [PASS] $test_name"
         return 0
@@ -60,13 +63,22 @@ assert_order() {
     local pattern_a="$2"
     local pattern_b="$3"
     local test_name="${4:-order check}"
-    local pos_a pos_b
-    pos_a=$(echo "$output" | /usr/bin/grep -nE "$pattern_a" | head -1 | cut -d: -f1)
-    pos_b=$(echo "$output" | /usr/bin/grep -nE "$pattern_b" | head -1 | cut -d: -f1)
-    if [ -z "$pos_a" ] || [ -z "$pos_b" ]; then
+    local before_a after_a before_b after_b pos_a pos_b
+    # Find position of pattern_a by measuring length before the match
+    if [[ "$output" =~ $pattern_a ]]; then
+        before_a="${output%%${BASH_REMATCH[0]}*}"
+        pos_a=${#before_a}
+    else
         echo "  [FAIL] $test_name - pattern not found"
-        [ -z "$pos_a" ] && echo "  Missing: $pattern_a"
-        [ -z "$pos_b" ] && echo "  Missing: $pattern_b"
+        echo "  Missing: $pattern_a"
+        return 1
+    fi
+    if [[ "$output" =~ $pattern_b ]]; then
+        before_b="${output%%${BASH_REMATCH[0]}*}"
+        pos_b=${#before_b}
+    else
+        echo "  [FAIL] $test_name - pattern not found"
+        echo "  Missing: $pattern_b"
         return 1
     fi
     if [ "$pos_a" -lt "$pos_b" ]; then
@@ -74,7 +86,7 @@ assert_order() {
         return 0
     else
         echo "  [FAIL] $test_name"
-        echo "  Expected '$pattern_a' (line $pos_a) before '$pattern_b' (line $pos_b)"
+        echo "  Expected '$pattern_a' (pos $pos_a) before '$pattern_b' (pos $pos_b)"
         return 1
     fi
 }
@@ -137,7 +149,7 @@ run_hook_from() {
 
 run_claude() {
     local prompt="$1"
-    local max_time="${2:-120}"
+    local max_time="${2:-60}"
     local plugin_dir="${3:-$PLUGIN_ROOT}"
     local work_dir="${4:-$PLUGIN_ROOT}"
     local output_file
@@ -150,12 +162,13 @@ run_claude() {
     fi
     (
         cd "$work_dir"
+        # Unset both nesting-detection vars so claude can run inside Claude Code
         unset CLAUDECODE
+        unset CLAUDE_CODE_ENTRYPOINT
         $timeout_cmd claude -p "$prompt" \
             --plugin-dir "$plugin_dir" \
             --dangerously-skip-permissions \
-            --max-turns 3 \
-            --verbose \
+            --max-turns 2 \
             --output-format stream-json 2>&1
     ) > "$output_file" || true
     cat "$output_file"

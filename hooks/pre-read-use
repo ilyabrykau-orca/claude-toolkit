@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# PreToolUse hook: validates Read size on non-code files.
+# Runs AFTER pre-tool-use (which blocks code files).
+#
+# PERFORMANCE: Single jaq/jq call + bash arithmetic. ~5ms.
+#
+# ≤400 lines: allow (exit 0). 401-600: warn (exit 1). >600: block (exit 2).
+# Fail-open on errors.
+
+MAX_LINES=400
+TOLERANCE=200
+
+JQ=$(command -v jaq 2>/dev/null || command -v jq 2>/dev/null) || exit 0
+
+input=$(</dev/stdin) 2>/dev/null || exit 0
+
+# Single extraction: tool_name, file_path, limit
+parsed=$(printf '%s' "$input" | "$JQ" -r \
+  '[.tool_name // "", (.tool_input.file_path // ""), (.tool_input.limit // "")] | @tsv' \
+  2>/dev/null) || exit 0
+IFS=$'\t' read -r tool_name file_path limit <<< "$parsed"
+
+[[ "$tool_name" == "Read" ]] || exit 0
+[[ -n "$file_path" ]] || exit 0
+
+# Determine effective line count
+effective=0
+if [[ -n "$limit" && "$limit" =~ ^[0-9]+$ ]]; then
+  effective=$limit
+elif [[ -f "$file_path" ]]; then
+  effective=$(wc -l < "$file_path" 2>/dev/null) || exit 0
+  effective="${effective// /}"
+  [[ "$effective" =~ ^[0-9]+$ ]] || exit 0
+else
+  exit 0
+fi
+
+# Enforce thresholds
+max_total=$(( MAX_LINES + TOLERANCE ))
+if (( effective <= MAX_LINES )); then
+  exit 0
+elif (( effective <= max_total )); then
+  echo "[WARN] Large read: ${effective} lines from '${file_path}'. Consider limit/offset." >&2
+  exit 1
+else
+  echo "Read blocked: ${effective} lines exceeds ${max_total}. Use limit/offset or Grep." >&2
+  exit 2
+fi

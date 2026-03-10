@@ -96,10 +96,14 @@ test_allow '{"tool_name":"Read","tool_input":{"file_path":"Dockerfile"}}' \
 
 echo ""
 echo "--- Edge cases ---"
-test_allow '{"tool_name":"Grep","tool_input":{"pattern":"TODO"}}' \
-    "Grep with no file_path allowed"
-test_allow '{"tool_name":"Read","tool_input":{"file_path":"deploy.sh"}}' \
-    "Read .sh allowed (shell scripts are config)"
+test_block '{"tool_name":"Grep","tool_input":{"pattern":"TODO"}}' \
+    "Grep blocked unconditionally (no file_path needed)" "mcp__codanna__"
+test_block '{"tool_name":"Glob","tool_input":{"pattern":"**/*.md"}}' \
+    "Glob blocked unconditionally (even non-code pattern)" "mcp__codanna__"
+test_block '{"tool_name":"Read","tool_input":{"file_path":"deploy.sh"}}' \
+    "Read .sh blocked (code file)" "mcp__serena__"
+test_allow '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+    "Bash always allowed"
 
 echo ""
 echo "Passed: $passed  Failed: $failed"

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Unified PreToolUse router: handles ALL pre-tool validation in one bash fork.
+#
+# Combines: pre-tool-use (native blocking) + pre-read-use (size validation)
+#           + pre-serena-edit (reference guard)
+#
+# PERFORMANCE: Single bash process, single jaq/jq call.
+# Measured: ~10ms total (vs ~20-30ms with separate hooks).
+#
+# Exit 0 = allow. Exit 1 = warn. Exit 2 = block. Fail-open on errors.
+
+JQ=$(command -v jq 2>/dev/null || command -v jaq 2>/dev/null) || exit 0
+
+input=$(</dev/stdin) 2>/dev/null || exit 0
+
+# Single JSON extraction — use newline-delimited output (tabs collapse empty fields)
+parsed=$(printf '%s' "$input" | "$JQ" -r \
+  '[.tool_name // "", (.tool_input.file_path // .tool_input.pattern // .tool_input.path // ""), (.tool_input.relative_path // ""), (.tool_input.limit // ""), (.session_id // "")] | .[]' \
+  2>/dev/null) || exit 0
+{ read -r tool_name; read -r file_path; read -r relative_path; read -r limit; read -r session_id; } <<< "$parsed"
+
+# ═══════════════════════════════════════════════════════════════════════
+# LAYER 1: Block Grep/Glob unconditionally
+# ═══════════════════════════════════════════════════════════════════════
+case "$tool_name" in
+  Grep)
+    echo "BLOCKED: Native Grep. Use mcp__codanna__semantic_search_with_context or mcp__serena__search_for_pattern." >&2
+    exit 2 ;;
+  Glob)
+    echo "BLOCKED: Native Glob. Use mcp__codanna__search_symbols or mcp__serena__find_file." >&2
+    exit 2 ;;
+esac
+
+# ═══════════════════════════════════════════════════════════════════════
+# LAYER 2: Block native Read/Edit/Write on code files
+# ═══════════════════════════════════════════════════════════════════════
+case "$tool_name" in
+  Read|Edit|Write)
+    if [[ -n "$file_path" ]]; then
+      case "$file_path" in
+        *.py|*.go|*.ts|*.tsx|*.js|*.jsx|*.rs|*.cpp|*.c|*.h|*.hpp|*.rb|*.java|*.kt|*.php|*.scala|*.swift|*.sh|*.bash)
+          case "$tool_name" in
+            Read)
+              echo "BLOCKED: Native Read on '$file_path'. Use mcp__serena__find_symbol(include_body=True) or mcp__serena__read_file." >&2 ;;
+            Edit|Write)
+              echo "BLOCKED: Native $tool_name on '$file_path'. Use mcp__serena__replace_symbol_body or mcp__serena__replace_content." >&2 ;;
+          esac
+          exit 2 ;;
+      esac
+    fi
+    ;;
+esac
+
+# ═══════════════════════════════════════════════════════════════════════
+# LAYER 3: Read size validation (non-code files only, since code was blocked above)
+# ═══════════════════════════════════════════════════════════════════════
+if [[ "$tool_name" == "Read" && -n "$file_path" ]]; then
+  MAX_LINES=400
+  TOLERANCE=200
+
+  effective=0
+  if [[ -n "$limit" && "$limit" =~ ^[0-9]+$ ]]; then
+    effective=$limit
+  elif [[ -f "$file_path" ]]; then
+    effective=$(wc -l < "$file_path" 2>/dev/null) || effective=0
+    effective="${effective// /}"
+    [[ "$effective" =~ ^[0-9]+$ ]] || effective=0
+  fi
+
+  if (( effective > 0 )); then
+    max_total=$(( MAX_LINES + TOLERANCE ))
+    if (( effective > max_total )); then
+      echo "Read blocked: ${effective} lines exceeds ${max_total}. Use limit/offset or Grep." >&2
+      exit 2
+    elif (( effective > MAX_LINES )); then
+      echo "[WARN] Large read: ${effective} lines from '${file_path}'. Consider limit/offset." >&2
+      exit 1
+    fi
+  fi
+fi
+
+# ═══════════════════════════════════════════════════════════════════════
+# LAYER 4: Serena edit guard (find_referencing_symbols before edits)
+# ═══════════════════════════════════════════════════════════════════════
+case "$tool_name" in
+  mcp__serena__replace_symbol_body|\
+  mcp__serena__replace_content|\
+  mcp__serena__insert_after_symbol|\
+  mcp__serena__insert_before_symbol|\
+  mcp__serena__rename_symbol)
+    if [[ -n "$relative_path" ]]; then
+      STATE_FILE="${CLAUDE_PLUGIN_ROOT:-/tmp}/state/refs-traced.json"
+      if [[ -f "$STATE_FILE" ]]; then
+        state_check=$("$JQ" -r --arg p "$relative_path" --arg s "$session_id" \
+          'if .session_id == $s and .traced[$p] != null then "ok" else "no" end' \
+          "$STATE_FILE" 2>/dev/null) || state_check="no"
+        if [[ "$state_check" == "ok" ]]; then
+          exit 0
+        fi
+      fi
+      echo "[serena-edit-guard] Editing '${relative_path}' without tracing references." >&2
+      echo "Call mcp__serena__find_referencing_symbols first to check downstream impact." >&2
+      exit 1
+    fi
+    ;;
+esac
+
+exit 0

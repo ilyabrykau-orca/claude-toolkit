@@ -95,28 +95,4 @@ mcp__codanna__semantic_search_docs(
 | `find_symbol(name="Foo", language="go")` | `find_symbol(name="Foo", lang="go")` |
 | `find_callers(symbol_id="abc123")` | `find_callers(function_name="process_event")` |
 | `get_calls(symbol_id="abc", depth=2)` | `get_calls(function_name="handle_request")` |
-| `analyze_impact(symbol_id="abc")` | `analyze_impact(symbol_name="SensorBase")` |python
-# Find class by name
-mcp__codanna__find_symbol(name="AbstractSensor", language="python")
-
-# Find Go interface
-mcp__codanna__find_symbol(name="SensorAgent", language="go")
-
-# Broad concept search
-mcp__codanna__semantic_search_with_context(query="kafka consumer group handling")
-
-# Fuzzy search, classes only
-mcp__codanna__search_symbols(query="sensor", kind="class", language="python")
-
-# Who calls this function?
-mcp__codanna__find_callers(symbol_id="<id from find_symbol>")
-
-# What does this function call?
-mcp__codanna__get_calls(symbol_id="<id>", depth=2)
-
-# Impact before editing
-mcp__codanna__analyze_impact(symbol_id="<id>")
-
-# Search orca docs
-mcp__codanna__semantic_search_docs(query="how does asset scanning work")
-```
+| `analyze_impact(symbol_id="abc")` | `analyze_impact(symbol_name="SensorBase")` |

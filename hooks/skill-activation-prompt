@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook: matches user prompt against skill-rules.json keywords
+#
+# Reads the user's prompt, checks it against skill keyword triggers,
+# and prints skill activation suggestions to stdout when matches are found.
+#
+# Reads rules from: ${CLAUDE_PLUGIN_ROOT}/skills/skill-rules.json
+#
+# Exit codes:
+#   0 = always (informational hook, never blocks)
+set -u
+
+# Always exit 0 — this is an informational hook
+trap 'exit 0' EXIT
+
+# Fail open if jq is missing
+command -v jq >/dev/null 2>&1 || exit 0
+
+# Skill rules location
+RULES_FILE="${CLAUDE_PLUGIN_ROOT:-/dev/null}/skills/skill-rules.json"
+
+# Read JSON from stdin
+input=$(cat) || exit 0
+
+# Extract prompt text, lowercase it
+prompt=$(echo "$input" | jq -r '(.prompt // "") | ascii_downcase' 2>/dev/null) || exit 0
+
+# If no prompt, nothing to match
+if [ -z "$prompt" ]; then
+    exit 0
+fi
+
+# Check rules file exists
+if [ ! -f "$RULES_FILE" ]; then
+    exit 0
+fi
+
+# Extract all skills with their keywords and priority in one jq call
+# Output format: one line per skill: skill_name\tkeyword1|keyword2|...\tpriority
+skills_data=$(jq -r '
+  .skills | to_entries[] |
+  select(.value.promptTriggers.keywords != null) |
+  [
+    .key,
+    (.value.promptTriggers.keywords | map(ascii_downcase) | join("|")),
+    (.value.priority // "medium"),
+    (.value.promptTriggers.intentPatterns // [] | join("|"))
+  ] | @tsv
+' "$RULES_FILE" 2>/dev/null) || exit 0
+
+if [ -z "$skills_data" ]; then
+    exit 0
+fi
+
+# Match skills against prompt
+matched_critical=""
+matched_high=""
+matched_medium=""
+matched_low=""
+
+while IFS=$'\t' read -r skill_name keywords priority intent_patterns; do
+    matched=false
+
+    # Check keywords (pipe-separated list, check each as substring)
+    IFS='|' read -ra kw_array <<< "$keywords"
+    for kw in "${kw_array[@]}"; do
+        if [ -n "$kw" ] && [[ "$prompt" == *"$kw"* ]]; then
+            matched=true
+            break
+        fi
+    done
+
+    # If no keyword match, try intent patterns (extended regex)
+    # Note: uses grep -iE (ERE) for macOS BSD grep compatibility.
+    # Lazy quantifiers (.*?) are converted to greedy (.*) since we only need match/no-match.
+    if [ "$matched" = false ] && [ -n "$intent_patterns" ]; then
+        # Re-extract patterns as newline-separated (safe for patterns containing |)
+        intent_list=$(jq -r --arg name "$skill_name" '
+          .skills[$name].promptTriggers.intentPatterns // [] | .[]
+        ' "$RULES_FILE" 2>/dev/null) || true
+
+        while IFS= read -r pattern; do
+            if [ -z "$pattern" ]; then continue; fi
+            # Convert lazy quantifiers to greedy for ERE compatibility
+            ere_pattern="${pattern//\?\?/?}"
+            ere_pattern="${ere_pattern//\*\?/*}"
+            ere_pattern="${ere_pattern//+\?/+}"
+            if echo "$prompt" | grep -qiE "$ere_pattern" 2>/dev/null; then
+                matched=true
+                break
+            fi
+        done <<< "$intent_list"
+    fi
+
+    if [ "$matched" = true ]; then
+        case "$priority" in
+            critical) matched_critical="${matched_critical}  -> ${skill_name}\n" ;;
+            high)     matched_high="${matched_high}  -> ${skill_name}\n" ;;
+            medium)   matched_medium="${matched_medium}  -> ${skill_name}\n" ;;
+            low)      matched_low="${matched_low}  -> ${skill_name}\n" ;;
+        esac
+    fi
+done <<< "$skills_data"
+
+# If no matches, exit silently
+if [ -z "$matched_critical" ] && [ -z "$matched_high" ] && [ -z "$matched_medium" ] && [ -z "$matched_low" ]; then
+    exit 0
+fi
+
+# Build output
+output=""
+output+="-------------------------------------------\n"
+output+="SKILL ACTIVATION CHECK\n"
+output+="-------------------------------------------\n\n"
+
+if [ -n "$matched_critical" ]; then
+    output+="CRITICAL SKILLS (REQUIRED):\n"
+    output+="$matched_critical\n"
+fi
+
+if [ -n "$matched_high" ]; then
+    output+="RECOMMENDED SKILLS:\n"
+    output+="$matched_high\n"
+fi
+
+if [ -n "$matched_medium" ]; then
+    output+="SUGGESTED SKILLS:\n"
+    output+="$matched_medium\n"
+fi
+
+if [ -n "$matched_low" ]; then
+    output+="OPTIONAL SKILLS:\n"
+    output+="$matched_low\n"
+fi
+
+output+="ACTION: Use Skill tool BEFORE responding\n"
+output+="-------------------------------------------\n"
+
+printf "%b" "$output"
+
+exit 0

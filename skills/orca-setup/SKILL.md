@@ -1,6 +1,6 @@
 ---
 name: orca-setup
-description: Orca workspace setup — tool routing enforcement, Codanna/Serena patterns, memory protocol. Auto-injected at session start.
+description: Orca workspace setup — tool routing enforcement, Codanna/Serena patterns, memory protocol.
 ---
 
 # Orca Workspace Setup
