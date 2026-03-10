@@ -1,8 +1,10 @@
 {
-  "name": "orca-env",
-  "version": "2.0.0",
-  "description": "Orca workspace plugin: enforces Codanna/Serena tool routing, auto-activates Serena by cwd, injects workflow rules at session start.",
+  "name": "orca-sensor-claude",
+  "version": "2.1.0",
+  "description": "Claude Code plugin for Orca Sensor team: Codanna/Serena MCP routing, tool enforcement, Serena edit guard, session analytics",
   "author": {
-    "name": "ilyabrykau"
-  }
+    "name": "Orca Security - Sensor Team"
+  },
+  "homepage": "https://github.com/ilyabrykau-orca/orca-sensor-claude",
+  "repository": "https://github.com/ilyabrykau-orca/orca-sensor-claude"
 }
