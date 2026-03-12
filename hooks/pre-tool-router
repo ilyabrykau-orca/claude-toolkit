@@ -61,8 +61,8 @@ case "$tool_name" in
     if [[ -n "$relative_path" ]]; then
       STATE_FILE="${CLAUDE_PLUGIN_ROOT:-/tmp}/state/refs-traced.json"
       if [[ -f "$STATE_FILE" ]]; then
-        state_check=$("$JQ" -r --arg p "$relative_path" --arg s "$session_id" \
-          'if .session_id == $s and .traced[$p] != null then "ok" else "no" end' \
+        state_check=$("$JQ" -r --arg s "$session_id" \
+          'if .session_id == $s and (.traced | length) > 0 then "ok" else "no" end' \
           "$STATE_FILE" 2>/dev/null) || state_check="no"
         if [[ "$state_check" == "ok" ]]; then
           exit 0

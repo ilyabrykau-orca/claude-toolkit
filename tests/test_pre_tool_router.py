@@ -301,8 +301,12 @@ class TestLayer3EditGuard:
         assert code == 1
 
     @pytest.mark.parametrize("tool_name", SERENA_EDIT_TOOLS)
-    def test_edit_with_missing_path_in_state_warns(self, run_hook_isolated, tmp_path, tool_name):
-        """State file present but path not traced should warn (exit 1)."""
+    def test_edit_allowed_after_any_trace_in_session(self, run_hook_isolated, tmp_path, tool_name):
+        """State file present with any traced entry in same session should allow (exit 0).
+
+        With cbm architecture, tracing is session-wide — any trace_call_path/search_graph
+        call clears the edit guard for the entire session, not just the specific file traced.
+        """
         session_id = "sess-123"
 
         state_dir = tmp_path / "state"
@@ -317,7 +321,7 @@ class TestLayer3EditGuard:
             make_tool_input(tool_name, relative_path="src/untraced.py", session_id=session_id),
             plugin_root_override=tmp_path,
         )
-        assert code == 1
+        assert code == 0
 
     def test_all_five_serena_edit_tools_guarded(self, run_hook_isolated, tmp_path):
         """Verify all 5 Serena edit tools trigger the guard (exit 1 without trace)."""
