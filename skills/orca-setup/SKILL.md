@@ -1,6 +1,6 @@
 ---
 name: orca-setup
-description: Orca workspace setup — tool routing enforcement, Codanna/Serena patterns, memory protocol.
+description: Orca workspace setup — tool routing enforcement, codebase-memory-mcp/RTK/Serena patterns, memory protocol.
 ---
 
 # Orca Workspace Setup
@@ -11,6 +11,8 @@ Native `Read`, `Edit`, `Write`, `Grep`, `Glob` are **HARD-BLOCKED** on code file
 A PreToolUse hook returns exit 2 if you attempt to use them. Use MCP tools instead.
 
 Non-code files (.json, .yaml, .md, .toml, .cfg, .sh, Makefile, Dockerfile) → native tools allowed.
+
+Shell commands (git, pytest, go test, make, etc.) go through **RTK global rewrite** for token compression — always use native Bash for shell.
 
 ---
 
@@ -25,8 +27,8 @@ mcp__serena__activate_project(project=<detected-project>)
 Then load memories:
 
 ```
-mcp__serena__list_memories()
-mcp__serena__read_memory(memory_file_name="cross_project_map")
+codebase-memory-mcp manage_adr(action="list")
+codebase-memory-mcp manage_adr(action="get", id="cross_project_map")
 ```
 
 ---
@@ -36,31 +38,36 @@ mcp__serena__read_memory(memory_file_name="cross_project_map")
 ### Search Code
 
 ```python
-# Broad "how does X work?" — returns docs + callers + calls
-mcp__codanna__semantic_search_with_context(query="how does kafka offset commit work", lang="python", limit=5)
+# Broad "how does X work?" — natural language search
+codebase-memory-mcp search_graph(query="how does kafka offset commit work", lang="python", limit=5)
 
-# Exact symbol lookup by name
-mcp__codanna__find_symbol(name="AbstractSensor", lang="python", kind="class")
+# Exact symbol lookup by name with kind filter
+codebase-memory-mcp search_graph(query="AbstractSensor", lang="python", kind="class")
 
 # Fuzzy search with filters
-mcp__codanna__search_symbols(query="sensor", kind="class", lang="python", limit=10)
+codebase-memory-mcp search_graph(query="sensor", kind="class", lang="python", limit=10)
+
+# Pattern/regex search across files
+codebase-memory-mcp search_code(query="TODO|FIXME", glob="**/*.py")
 ```
 
 ### Read Code
 
 ```python
 # Read symbol with body (preferred — token efficient)
-mcp__serena__find_symbol(name_path_pattern="AbstractSensor", include_body=True, relative_path="orca/sensors/")
+codebase-memory-mcp get_code_snippet(symbol="AbstractSensor", path="orca/sensors/")
 
-# Read file range
-mcp__serena__read_file(relative_path="orca/sensors/base.py", start_line=10, end_line=50)
+# Read file range via RTK (shell passthrough)
+rtk read orca/sensors/base.py 10:50
+# or via Bash:
+# Bash: cat -n orca/sensors/base.py | sed -n '10,50p'
 ```
 
 ### Edit Code — The Golden Loop
 
-1. **Search**: `mcp__codanna__semantic_search_with_context(query="...")`
-2. **Locate**: `mcp__codanna__find_symbol(name="...", lang="...")`
-3. **Trace**: `mcp__serena__find_referencing_symbols(name_path="TargetFunc", relative_path="orca/module/file.py")` — **FILE path, not directory. MANDATORY before any edit.**
+1. **Search**: `codebase-memory-mcp search_graph(query="...")`
+2. **Locate**: `codebase-memory-mcp search_graph(query="...", lang="...", kind="...")`
+3. **Trace**: `codebase-memory-mcp trace_call_path(symbol="TargetFunc", path="orca/module/file.py")` — **MANDATORY before any edit.**
 4. **Plan**: TaskCreate with research → implement → verify
 5. **Edit**: Serena tools (see below)
 6. **Verify**: `pytest` / `go test`
@@ -102,14 +109,12 @@ mcp__serena__insert_after_symbol(
 ### Call Graph
 
 ```python
-# Who calls this? (use before modifying shared code)
-mcp__codanna__find_callers(function_name="process_event")
-
-# What does this call?
-mcp__codanna__get_calls(function_name="handle_request")
+# Who calls this / what does this call — trace in both directions
+codebase-memory-mcp trace_call_path(symbol="process_event", direction="callers")
+codebase-memory-mcp trace_call_path(symbol="handle_request", direction="callees")
 
 # Full impact before risky refactor
-mcp__codanna__analyze_impact(symbol_name="SensorBase", max_depth=3)
+codebase-memory-mcp detect_changes(symbol="SensorBase", max_depth=3)
 ```
 
 ### Library Documentation
@@ -123,14 +128,15 @@ mcp__docs__fetch_url(url="https://docs.example.com/api")
 
 ## Step 3: Memory Protocol
 
-At session start: `mcp__serena__list_memories()` → read relevant ones.
+At session start: `codebase-memory-mcp manage_adr(action="list")` → read relevant ones.
 
 ```python
-mcp__serena__write_memory(
-    memory_file_name="kafka_migration",
+codebase-memory-mcp manage_adr(
+    action="create",
+    id="kafka_migration",
     content="# Kafka Migration\n\nDecision: use confluent-kafka..."
 )
-mcp__serena__read_memory(memory_file_name="cross_project_map")
+codebase-memory-mcp manage_adr(action="get", id="cross_project_map")
 ```
 
 ---
@@ -153,17 +159,15 @@ Copy-paste correct parameter names. No aliases work.
 
 | Tool | Param | Correct | WRONG (do not use) |
 |------|-------|---------|---------------------|
-| `find_symbol` (Codanna) | language | `lang` | `language` |
-| `search_symbols` | language | `lang` | `language` |
-| `semantic_search_with_context` | language | `lang` | `language` |
-| `find_callers` | symbol | `function_name` | `symbol_id` |
-| `get_calls` | symbol | `function_name` | `symbol_id`, `depth` |
-| `analyze_impact` | symbol | `symbol_name` | `symbol_id` |
+| `search_graph` (cbm) | language | `lang` | `language` |
+| `search_graph` (cbm) | symbol kind | `kind` | `type`, `symbol_type` |
+| `trace_call_path` (cbm) | symbol | `symbol` | `function_name`, `symbol_id` |
+| `detect_changes` (cbm) | symbol | `symbol` | `symbol_name`, `symbol_id` |
+| `manage_adr` (cbm) | action values | `"list"`, `"get"`, `"create"` | `"read"`, `"write"` |
 | `find_referencing_symbols` | symbol | `name_path` + `relative_path` (FILE) | `symbol_name`, dir path |
 | `replace_content` | params | `needle`, `repl`, `mode` | `pattern`, `replacement`, `is_regex` |
 | `replace_content` | mode values | `"literal"` or `"regex"` | `True`, `false`, `"regexp"` |
 | `replace_content` | backrefs | `$!1`, `$!2` | `\1`, `\2` |
-| All memory tools | key | `memory_file_name` | `memory_name`, `memory_file`, `name` |
 | `find_symbol` (Serena) | symbol | `name_path_pattern` | `name`, `symbol_name` |
 | `read_file` | lines | 0-based, `end_line` inclusive | 1-based |
 

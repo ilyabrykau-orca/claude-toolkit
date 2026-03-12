@@ -29,14 +29,15 @@
       "type": "domain",
       "enforcement": "suggest",
       "priority": "high",
-      "description": "Meta-skill for exploring local codebase using codanna",
+      "description": "Meta-skill for exploring local codebase using codebase-memory-mcp",
       "promptTriggers": {
         "keywords": [
           "investigate",
           "understand code",
           "explore",
-          "codabase",
-          "use codanna"
+          "codebase",
+          "use cbm",
+          "codebase-memory-mcp"
         ],
         "intentPatterns": [
           "(how do|how does|explain).*?code",
@@ -44,32 +45,6 @@
           "(create|add|modify|build).*?class",
           "(create|add|modify|build).*?function",
           "code.*?(work|trigger|structure|system)"
-        ]
-      }
-    },
-    "add-language": {
-      "type": "domain",
-      "enforcement": "suggest",
-      "priority": "high",
-      "description": "Guide for implementing new language parser in Codanna",
-      "promptTriggers": {
-        "keywords": [
-          "add language",
-          "new language",
-          "language support",
-          "implement parser",
-          "create parser",
-          "language implementation",
-          "add support for",
-          "parser implementation",
-          "language parser",
-          "tree-sitter"
-        ],
-        "intentPatterns": [
-          "(add|implement|create).*?(language|parser)",
-          "(new|support).*?language",
-          "language.*?(support|implementation|parser)",
-          "(how do|how to).*?add.*?language"
         ]
       }
     }
