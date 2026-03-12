@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# PostToolUse hook: tracks cbm trace_call_path and search_graph calls.
+# Records session state so pre-tool-router Layer 3 can enforce
+# "always trace references before editing" protocol.
+#
+# State file: $CLAUDE_PLUGIN_ROOT/state/refs-traced.json
+# Exit 0 always (tracking hook should never block).
+
+trap 'exit 0' EXIT
+
+JQ=$(command -v jq 2>/dev/null || command -v jaq 2>/dev/null) || exit 0
+
+STATE_DIR="${CLAUDE_PLUGIN_ROOT:-/tmp}/state"
+STATE_FILE="${STATE_DIR}/refs-traced.json"
+
+input=$(</dev/stdin) 2>/dev/null || exit 0
+
+parsed=$(printf '%s' "$input" | "$JQ" -r \
+  '[.tool_name // "", (((.tool_response? // {}).is_error // false) | if . then "err" else "ok" end), (.session_id // "unknown")] | @tsv' \
+  2>/dev/null) || exit 0
+IFS=$'\t' read -r tool_name status session_id <<< "$parsed"
+
+# Only track cbm trace and search tools
+case "$tool_name" in
+  mcp__codebase-memory-mcp__trace_call_path|mcp__codebase-memory-mcp__search_graph) ;;
+  *) exit 0 ;;
+esac
+
+[[ "$status" == "ok" ]] || exit 0
+
+mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
+
+existing='{"session_id":null,"traced":{}}'
+[[ -f "$STATE_FILE" ]] && existing=$(< "$STATE_FILE") 2>/dev/null
+
+timestamp=$(date +%s)
+new_state=$(printf '%s' "$existing" | "$JQ" \
+  --arg sid "$session_id" --argjson ts "$timestamp" \
+  'if .session_id != $sid then {"session_id":$sid,"traced":{"_session_traced":$ts}} else .traced["_session_traced"]=$ts end' \
+  2>/dev/null) || exit 0
+
+tmp="${STATE_FILE}.tmp.$$"
+printf '%s\n' "$new_state" > "$tmp" 2>/dev/null && mv "$tmp" "$STATE_FILE" 2>/dev/null
+
+exit 0

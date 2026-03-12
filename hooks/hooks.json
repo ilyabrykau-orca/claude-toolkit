@@ -19,8 +19,8 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "mcp__serena__find_referencing_symbols",
-        "hooks": [{ "type": "command", "command": "bash '${CLAUDE_PLUGIN_ROOT}/hooks/post-serena-refs'", "timeout": 5 }]
+        "matcher": "mcp__codebase-memory-mcp__(trace_call_path|search_graph)",
+        "hooks": [{ "type": "command", "command": "bash '${CLAUDE_PLUGIN_ROOT}/hooks/post-cbm-trace'", "timeout": 5 }]
       }
     ],
     "Stop": [
