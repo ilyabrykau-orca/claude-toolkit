@@ -26,6 +26,20 @@ skill_content=$(< "${PLUGIN_ROOT}/skills/orca-setup/SKILL.md") 2>/dev/null || sk
 # Detect project
 project=$(detect_project)
 
+# CBM project mapping (detect from $PWD)
+detect_cbm_project() {
+    local cwd="$PWD"
+    case "$cwd" in
+        */orca-runtime-sensor*) echo "Users-ilyabrykau-src-orca-runtime-sensor" ;;
+        */orca-sensor*)         echo "Users-ilyabrykau-src-orca-sensor" ;;
+        */src/orca*)             echo "Users-ilyabrykau-src-orca" ;;
+        */src)                  echo "Users-ilyabrykau-src" ;;
+        *)                      echo "" ;;
+    esac
+}
+
+cbm_project=$(detect_cbm_project)
+
 # Build project activation block
 project_ctx=""
 if [ -n "$project" ]; then
@@ -33,6 +47,19 @@ if [ -n "$project" ]; then
 
 IMMEDIATELY call: mcp__serena__activate_project(project=${project})
 Then: mcp__serena__list_memories() and read relevant memories."
+fi
+
+# CBM project routing context
+cbm_ctx=""
+if [ -n "$cbm_project" ]; then
+    cbm_ctx="CBM PROJECT ROUTING:
+When using codebase-memory-mcp tools, ALWAYS specify the project parameter:
+- orca code → project=\"Users-ilyabrykau-src-orca\"
+- orca-sensor code → project=\"Users-ilyabrykau-src-orca-sensor\"
+- orca-runtime-sensor code → project=\"Users-ilyabrykau-src-orca-runtime-sensor\"
+- Cross-project search → query all three in parallel
+
+Default cbm project for this session: ${cbm_project}"
 fi
 
 # Build session context as plain string (jq handles escaping)
@@ -46,6 +73,11 @@ if [ -n "$project" ]; then
     session_ctx="${session_ctx}
 
 ${project_ctx}"
+fi
+if [ -n "$cbm_ctx" ]; then
+    session_ctx="${session_ctx}
+
+${cbm_ctx}"
 fi
 session_ctx="${session_ctx}
 </EXTREMELY_IMPORTANT>"
