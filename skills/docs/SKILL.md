@@ -1,11 +1,11 @@
 ---
 name: docs
-description: Library documentation lookup via Docs MCP server. Use for external library/framework docs (fastapi, pydantic, pytest, kafka, boto3, etc). NOT for code search — use Codanna for that.
+description: Library documentation lookup via Docs MCP server. Use for external library/framework docs (fastapi, pydantic, pytest, kafka, boto3, etc). NOT for code search — use codebase-memory-mcp for that.
 ---
 
 # Docs MCP — Library Documentation
 
-Use for external library documentation. NOT for searching orca project code (use Codanna for that).
+Use for external library documentation. NOT for searching orca project code (use codebase-memory-mcp for that).
 
 ## Search Indexed Docs
 
@@ -61,5 +61,5 @@ mcp__docs__find_version(library="fastapi", targetVersion="0.100.x")
 | Need | Tool |
 |------|------|
 | External library API | `search_docs` or `fetch_url` |
-| Internal project docs | `mcp__codanna__semantic_search_docs` |
-| Code search | Codanna — NOT Docs MCP |
+| Internal project docs | `mcp__codebase-memory-mcp__search_code` |
+| Code search | codebase-memory-mcp — NOT Docs MCP |

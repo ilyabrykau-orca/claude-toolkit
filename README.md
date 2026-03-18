@@ -1,6 +1,6 @@
 # claude-toolkit
 
-Claude Code plugin that enforces MCP tool routing for codebases using [Codanna](https://github.com/bartolli/codanna) and [Serena](https://github.com/aorwall/serena).
+Claude Code plugin that enforces MCP tool routing for codebases using [codebase-memory-mcp](https://github.com/nicobailon/codebase-memory-mcp) and [Serena](https://github.com/aorwall/serena).
 
 Instead of letting Claude use native Read/Edit/Grep on code files, this plugin blocks them and routes to MCP-powered alternatives — giving you semantic search, symbolic editing, reference tracking, and impact analysis.
 
@@ -8,49 +8,56 @@ Instead of letting Claude use native Read/Edit/Grep on code files, this plugin b
 
 | Native tool | Blocked on | Routed to |
 |---|---|---|
-| `Read` | Code files (.py, .go, .ts, .rs, ...) | `mcp__serena__find_symbol` / `mcp__serena__read_file` |
+| `Read` | Code files (.py, .go, .ts, .rs, ...) | `codebase-memory-mcp get_code_snippet` / `rtk read` |
 | `Edit` / `Write` | Code files | `mcp__serena__replace_symbol_body` / `mcp__serena__replace_content` |
-| `Grep` | All files | `mcp__codanna__semantic_search_with_context` |
-| `Glob` | All files | `mcp__codanna__search_symbols` |
+| `Grep` | All files | `mcp__codebase-memory-mcp__search_code` |
+| `Glob` | All files | `mcp__codebase-memory-mcp__search_graph` |
 
 Non-code files (.json, .yaml, .md, .toml) pass through to native tools.
 
 ### Additional features
 
-- **Serena edit guard** — warns if you edit code without first calling `find_referencing_symbols` (prevents breaking callers)
+- **Edit guard** — warns if you edit code without first calling `codebase-memory-mcp trace_call_path` (prevents breaking callers)
 - **Project detection** — auto-detects workspace project from cwd, injects Serena activation context
-- **Skill activation** — suggests relevant skills (codanna, serena-workflow, docs) based on prompt keywords
+- **Skill activation** — suggests relevant skills (codebase-memory, serena-workflow, docs) based on prompt keywords
 - **Session analytics** — tracks token usage, tool distribution, and costs per session
 
 ## Prerequisites
 
 - [Claude Code](https://claude.ai/code) CLI installed
-- [Codanna](https://github.com/bartolli/codanna) running at `https://localhost:8443/mcp`
+- [codebase-memory-mcp](https://github.com/nicobailon/codebase-memory-mcp) (stdio transport)
 - [Serena](https://github.com/aorwall/serena) running at `http://127.0.0.1:8765/mcp`
 - `jq` installed (`brew install jq`)
 
 ## Install
 
+### Automated (recommended)
+
+```bash
+git clone git@github.com:ilyabrykau-orca/claude-toolkit.git /tmp/claude-toolkit
+bash /tmp/claude-toolkit/install.sh
+```
+
+This sets up everything: marketplace, plugin, Serena configs, `.cbmignore` files, `.mcp.json`, and project settings. Run with `--force` to overwrite existing configs.
+
+If upgrading from v1 (Codanna), the script detects and warns about leftover configs.
+
+### Manual
+
 ```bash
 # Register marketplace (one-time)
-claude plugin marketplace add orca-sensor-marketplace ilyabrykau-orca/orca-sensor-marketplace
+claude plugin marketplace add ilyabrykau-orca/orca-sensor-marketplace
 
 # Install plugin
 claude plugin install claude-toolkit@orca-sensor-marketplace
-```
-
-Or install directly from the repo:
-
-```bash
-claude plugin install --from-repo ilyabrykau-orca/claude-toolkit
 ```
 
 ## Plugin structure
 
 ```
 hooks/
-  pre-tool-router       ← bash: native blocking + Serena edit guard (~10ms)
-  post-serena-refs      ← bash: tracks reference-traced files
+  pre-tool-router       ← bash: native blocking + edit guard (~10ms)
+  post-cbm-trace        ← bash: tracks cbm trace calls for edit guard
   skill-activation-prompt ← bash: keyword matching for skill suggestions
   session-start         ← bash: project detection + context injection
   stop.js               ← node: session analytics (once per session)
@@ -58,16 +65,17 @@ hooks/
   utils/transcript-parser.js
 
 skills/
-  codanna/SKILL.md      ← Codanna API patterns, wrong-vs-right table
   orca-setup/SKILL.md   ← workspace routing rules, build commands
   serena-workflow/SKILL.md ← Serena editing protocol
   docs/SKILL.md         ← Docs MCP usage
   skill-rules.json      ← keyword triggers for skill activation
 
 tests/
-  run-all.sh            ← unified runner (--unit / --integration)
-  unit/                 ← 11 test files
-  integration/          ← integration tests + prompts
+  test_pre_tool_router.py  ← pre-tool-router hook tests
+  test_post_cbm_trace.py   ← post-cbm-trace hook tests
+  test_session_start.py    ← session-start pipeline tests
+
+install.sh              ← automated installer (fresh + upgrade)
 ```
 
 ## Hook latency
@@ -78,7 +86,7 @@ Node.js hooks (stop/subagent-stop) run once per session end.
 | Hook | Latency | Frequency |
 |---|---|---|
 | `pre-tool-router` | ~10ms | Every tool call |
-| `post-serena-refs` | ~12ms | After `find_referencing_symbols` |
+| `post-cbm-trace` | ~12ms | After `trace_call_path` / `search_graph` |
 | `skill-activation-prompt` | ~8ms | Per user message |
 | `session-start` | ~11ms | Per session |
 | `stop.js` | ~70ms | Once at session end |
@@ -86,11 +94,9 @@ Node.js hooks (stop/subagent-stop) run once per session end.
 ## Testing
 
 ```bash
-# Run all unit tests
-bash tests/run-all.sh --unit
-
-# Run with verbose output
-bash tests/run-all.sh --unit --verbose
+cd /path/to/claude-toolkit
+pip install -r tests/requirements.txt
+pytest tests/ -v
 ```
 
 ## Configuration
