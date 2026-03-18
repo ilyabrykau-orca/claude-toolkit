@@ -5,11 +5,10 @@
 # What it does:
 #   1. Adds orca-sensor-marketplace (if missing)
 #   2. Installs/updates claude-toolkit plugin
-#   3. Creates Serena project configs (.serena/project.yml) with proper ignores
-#   4. Creates .cbmignore files for codebase-memory-mcp
-#   5. Creates .mcp.json for codebase-memory-mcp server
-#   6. Creates .claude/settings.local.json for project settings
-#   7. Migrates v1 (Codanna) → v2 (cbm) if old configs detected
+#   3. Adds codebase-memory-mcp MCP server via `claude mcp add`
+#   4. Creates Serena project configs (.serena/project.yml) with proper ignores
+#   5. Creates .cbmignore files for codebase-memory-mcp
+#   6. Migrates v1 (Codanna) → v2 (cbm) if old configs detected
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -65,13 +64,12 @@ ok "Workspace: $WORKSPACE"
 # ---------------------------------------------------------------------------
 step "Setting up marketplace"
 
-KNOWN_MP="$HOME/.claude/plugins/known_marketplaces.json"
-if [ -f "$KNOWN_MP" ] && jq -e ".\"$MARKETPLACE_NAME\"" "$KNOWN_MP" &>/dev/null; then
+if claude plugin marketplace list 2>&1 | grep -q "$MARKETPLACE_NAME"; then
     ok "Marketplace '$MARKETPLACE_NAME' already registered"
 else
     info "Adding marketplace: $MARKETPLACE_REPO"
-    claude plugin marketplace add "$MARKETPLACE_REPO" 2>&1 || {
-        err "Failed to add marketplace. Add manually: claude plugin marketplace add $MARKETPLACE_REPO"
+    claude plugin marketplace add "$MARKETPLACE_REPO" || {
+        err "Failed to add marketplace. Try: claude plugin marketplace add $MARKETPLACE_REPO"
         exit 1
     }
     ok "Marketplace added"
@@ -82,13 +80,12 @@ fi
 # ---------------------------------------------------------------------------
 step "Installing/updating plugin"
 
-INSTALLED_JSON="$HOME/.claude/plugins/installed_plugins.json"
-if [ -f "$INSTALLED_JSON" ] && jq -e ".plugins.\"$PLUGIN_FULL\"" "$INSTALLED_JSON" &>/dev/null; then
+if claude plugin list 2>&1 | grep -q "$PLUGIN_NAME.*$MARKETPLACE_NAME"; then
     info "Plugin already installed, checking for updates..."
     claude plugin update "$PLUGIN_FULL" 2>&1
 else
     info "Installing $PLUGIN_FULL..."
-    claude plugin install "$PLUGIN_FULL" 2>&1 || {
+    claude plugin install "$PLUGIN_FULL" || {
         err "Failed to install plugin. Try: claude plugin install $PLUGIN_FULL"
         exit 1
     }
@@ -96,15 +93,25 @@ fi
 ok "Plugin ready"
 
 # ---------------------------------------------------------------------------
-# Step 3: Serena project configs
+# Step 3: MCP server (codebase-memory-mcp)
+# ---------------------------------------------------------------------------
+step "Setting up codebase-memory-mcp MCP server"
+
+if claude mcp list 2>&1 | grep -q "codebase-memory-mcp"; then
+    ok "codebase-memory-mcp already configured"
+else
+    info "Adding codebase-memory-mcp (project scope)..."
+    claude mcp add --scope project codebase-memory-mcp -- npx -y codebase-memory-mcp || {
+        err "Failed to add MCP server. Try: claude mcp add --scope project codebase-memory-mcp -- npx -y codebase-memory-mcp"
+        exit 1
+    }
+    ok "codebase-memory-mcp added"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4: Serena project configs
 # ---------------------------------------------------------------------------
 step "Setting up Serena project configs"
-
-# Detect which repos exist
-REPOS=()
-[ -d "$WORKSPACE/orca" ] && REPOS+=("orca")
-[ -d "$WORKSPACE/orca-sensor" ] && REPOS+=("orca-sensor")
-[ -d "$WORKSPACE/orca-runtime-sensor" ] && REPOS+=("orca-runtime-sensor")
 
 create_serena_project() {
     local repo_path="$1"
@@ -141,7 +148,6 @@ default_modes:
 fixed_tools: []
 YAMLEOF
 
-    # Ensure .serena/.gitignore exists
     if [ ! -f "$serena_dir/.gitignore" ]; then
         cat > "$serena_dir/.gitignore" << 'GIEOF'
 cache/
@@ -174,7 +180,8 @@ create_serena_project "$WORKSPACE" "orca-unified" \
 - "**/.**"'
 
 # Individual repos
-for repo in "${REPOS[@]}"; do
+for repo in orca orca-sensor orca-runtime-sensor; do
+    [ -d "$WORKSPACE/$repo" ] || continue
     case "$repo" in
         orca)
             create_serena_project "$WORKSPACE/$repo" "$repo" \
@@ -210,7 +217,7 @@ for repo in "${REPOS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 4: .cbmignore files
+# Step 5: .cbmignore files
 # ---------------------------------------------------------------------------
 step "Setting up .cbmignore files"
 
@@ -225,7 +232,6 @@ create_cbmignore() {
     ok "  $(basename "$(dirname "$path")"): created .cbmignore"
 }
 
-# Workspace root
 create_cbmignore "$WORKSPACE/.cbmignore" "# Unified workspace: only index the three main repos
 /helm-charts/
 /grafana-provisioning/
@@ -234,10 +240,8 @@ create_cbmignore "$WORKSPACE/.cbmignore" "# Unified workspace: only index the th
 /docs/
 /.*"
 
-# orca
 [ -d "$WORKSPACE/orca" ] && create_cbmignore "$WORKSPACE/orca/.cbmignore" \
 "# codebase-memory-mcp ignore — orca
-# Target: ~8K source files. Skip data, fixtures, generated, caches.
 
 # Virtual environments & caches
 .venv/
@@ -264,7 +268,7 @@ lib/orca/alert_rules/
 lib/orca/dynamic_updates/
 utils/cis_frameworks/
 
-# CIS test data (17K files, only 113 actual .py)
+# CIS test data
 sensors/services/cdi/
 
 # Test data & fixtures
@@ -297,7 +301,7 @@ vendor/
 .swm/
 .DS_Store
 
-# Non-code files cbm doesn't need to parse
+# Non-code files
 *.md
 *.xml
 *.html
@@ -317,7 +321,6 @@ vendor/
 *.swp
 *~"
 
-# orca-sensor
 [ -d "$WORKSPACE/orca-sensor" ] && create_cbmignore "$WORKSPACE/orca-sensor/.cbmignore" \
 "# codebase-memory-mcp ignore — orca-sensor
 vendor/
@@ -334,7 +337,6 @@ docs/
 *.hcl
 *.json"
 
-# orca-runtime-sensor
 [ -d "$WORKSPACE/orca-runtime-sensor" ] && create_cbmignore "$WORKSPACE/orca-runtime-sensor/.cbmignore" \
 "# codebase-memory-mcp ignore — orca-runtime-sensor
 
@@ -357,80 +359,15 @@ __pycache__/
 *.txt"
 
 # ---------------------------------------------------------------------------
-# Step 5: .mcp.json for codebase-memory-mcp
-# ---------------------------------------------------------------------------
-step "Setting up MCP server config"
-
-MCP_JSON="$WORKSPACE/.mcp.json"
-if [ -f "$MCP_JSON" ] && jq -e '.mcpServers."codebase-memory-mcp"' "$MCP_JSON" &>/dev/null; then
-    ok "codebase-memory-mcp already in .mcp.json"
-elif [ -f "$MCP_JSON" ]; then
-    # Merge into existing .mcp.json
-    info "Adding codebase-memory-mcp to existing .mcp.json"
-    jq '.mcpServers["codebase-memory-mcp"] = {
-        "command": "npx",
-        "args": ["-y", "codebase-memory-mcp"],
-        "type": "stdio"
-    }' "$MCP_JSON" > "${MCP_JSON}.tmp" && mv "${MCP_JSON}.tmp" "$MCP_JSON"
-    ok "Added codebase-memory-mcp to .mcp.json"
-else
-    info "Creating .mcp.json"
-    cat > "$MCP_JSON" << 'MCPEOF'
-{
-  "mcpServers": {
-    "codebase-memory-mcp": {
-      "command": "npx",
-      "args": ["-y", "codebase-memory-mcp"],
-      "type": "stdio"
-    }
-  }
-}
-MCPEOF
-    ok "Created .mcp.json with codebase-memory-mcp"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 6: .claude/settings.local.json
-# ---------------------------------------------------------------------------
-step "Setting up Claude Code project settings"
-
-CLAUDE_DIR="$WORKSPACE/.claude"
-LOCAL_SETTINGS="$CLAUDE_DIR/settings.local.json"
-mkdir -p "$CLAUDE_DIR"
-
-if [ -f "$LOCAL_SETTINGS" ] && [ "$FORCE" != "--force" ]; then
-    # Ensure enabledMcpjsonServers includes cbm
-    if jq -e '.enabledMcpjsonServers | index("codebase-memory-mcp")' "$LOCAL_SETTINGS" &>/dev/null; then
-        ok "settings.local.json already configured"
-    else
-        info "Adding codebase-memory-mcp to enabledMcpjsonServers"
-        jq '.enabledMcpjsonServers = (.enabledMcpjsonServers // []) + ["codebase-memory-mcp"] | .enabledMcpjsonServers |= unique' \
-            "$LOCAL_SETTINGS" > "${LOCAL_SETTINGS}.tmp" && mv "${LOCAL_SETTINGS}.tmp" "$LOCAL_SETTINGS"
-        ok "Updated settings.local.json"
-    fi
-else
-    cat > "$LOCAL_SETTINGS" << 'SETTEOF'
-{
-  "enabledMcpjsonServers": [
-    "codebase-memory-mcp"
-  ],
-  "enableAllProjectMcpServers": true
-}
-SETTEOF
-    ok "Created settings.local.json"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 7: v1 → v2 migration (detect and clean Codanna leftovers)
+# Step 6: v1 → v2 migration (detect and clean Codanna leftovers)
 # ---------------------------------------------------------------------------
 step "Checking for v1 (Codanna) leftovers"
 
 migrated=0
 
-# Check for Codanna references in .mcp.json
-if [ -f "$MCP_JSON" ] && jq -e '.mcpServers.codanna // .mcpServers.Codanna' "$MCP_JSON" &>/dev/null; then
-    warn "Found Codanna server in .mcp.json — removing"
-    jq 'del(.mcpServers.codanna) | del(.mcpServers.Codanna)' "$MCP_JSON" > "${MCP_JSON}.tmp" && mv "${MCP_JSON}.tmp" "$MCP_JSON"
+# Check for Codanna MCP server
+if claude mcp list 2>&1 | grep -qi "codanna"; then
+    warn "Found Codanna MCP server — remove it: claude mcp remove codanna"
     migrated=1
 fi
 
@@ -448,9 +385,9 @@ for d in "$WORKSPACE" "$WORKSPACE"/orca "$WORKSPACE"/orca-sensor "$WORKSPACE"/or
     if [ -d "$mem_dir" ]; then
         codanna_refs=$(grep -ril "codanna" "$mem_dir" 2>/dev/null || true)
         if [ -n "$codanna_refs" ]; then
-            warn "Serena memories with Codanna references in $d/.serena/memories/:"
+            warn "Serena memories with Codanna references in $mem_dir/:"
             echo "$codanna_refs" | while read -r f; do echo "  - $(basename "$f")"; done
-            warn "Review and update these memories to reference codebase-memory-mcp instead"
+            warn "Review and update these to reference codebase-memory-mcp instead"
             migrated=1
         fi
     fi
@@ -475,13 +412,10 @@ echo ""
 echo "  What was set up:"
 echo "    ✓ Marketplace: $MARKETPLACE_NAME"
 echo "    ✓ Plugin: $PLUGIN_FULL"
+echo "    ✓ MCP server: codebase-memory-mcp (via claude mcp add)"
 echo "    ✓ Serena configs: .serena/project.yml (per repo)"
 echo "    ✓ CBM ignores: .cbmignore (per repo)"
-echo "    ✓ MCP server: codebase-memory-mcp in .mcp.json"
-echo "    ✓ Project settings: .claude/settings.local.json"
 echo ""
 echo "  Quick start:"
 echo "    cd $WORKSPACE && claude"
-echo ""
-echo "  First session will auto-detect the workspace and activate tools."
 echo ""
