@@ -46,7 +46,7 @@ if [ -n "$project" ]; then
     project_ctx="SERENA WORKSPACE DETECTED: project='${project}' at ${PWD}
 
 IMMEDIATELY call: mcp__serena__activate_project(project=${project})
-Then: mcp__serena__list_memories() and read relevant memories."
+Then: mcp__codebase-memory-mcp__manage_adr(action=\"list\") and read relevant ADRs."
 fi
 
 # CBM project routing context
