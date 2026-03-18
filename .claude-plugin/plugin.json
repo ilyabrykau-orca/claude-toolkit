@@ -1,6 +1,6 @@
 {
   "name": "claude-toolkit",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "MCP tool routing (codebase-memory-mcp + RTK + Serena), native tool enforcement, edit guards, and session analytics for Claude Code",
   "author": {
     "name": "Orca Security"
